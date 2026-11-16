@@ -57,6 +57,11 @@ Prerequisites: a fully built `tool/` (`cd ../tool && npm start build`)
 and Anthropic credentials (`ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`,
 or a regular `claude` login). Every run burns real AI tokens.
 
+Note: when running all tests (i.e. not selecting any test), we first run all
+tests in `cases/probe`. These are comparable cheap tests to determine the basic
+functionality of the chosen LLM. For example, Anthropic's haiku model will fail
+the probe tests. 
+
 ### With a Cloud LLM (Anthropic API)
 
 ```

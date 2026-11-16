@@ -12,7 +12,7 @@
 
 set -euo pipefail
 
-#   operate from the directory of this script (the "test/" directory)
+#   operate from the directory of this script (the harness directory)
 cd "$(dirname "$0")"
 
 #   determine the LLM gateway profile

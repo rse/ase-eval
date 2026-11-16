@@ -17,10 +17,11 @@ import * as path from "node:path"
 import * as url  from "node:url"
 import * as util from "node:util"
 
-/*  the repository root (this module lives in "<repo>/test/agent/")  */
-const here     = path.dirname(url.fileURLToPath(import.meta.url))
-const repoRoot = path.resolve(here, "..", "..")
-const aseBin   = path.join(repoRoot, "tool", "bin", "ase")
+/*  the harness root and the repository root (this module lives in "<repo>/<harness>/agent/")  */
+const here        = path.dirname(url.fileURLToPath(import.meta.url))
+const harnessRoot = path.resolve(here, "..")
+const repoRoot    = path.resolve(harnessRoot, "..")
+const aseBin      = path.join(repoRoot, "tool", "bin", "ase")
 
 /*  the configuration of a case ("case.json"): the id of its task fixture, the program
     the agents have to produce, and how the agents run ("pipeline": one agent after the
@@ -509,7 +510,7 @@ const runFleet = async (sb: Sandbox, result: Result, agentsLog: fs.WriteStream):
 const main = async (): Promise<number> => {
     const started    = Date.now()
     const stamp      = new Date().toISOString().replace(/[:.]/g, "-")
-    const resultsDir = path.join(repoRoot, "test", "results", `agent-${stamp}-${opts.case}`)
+    const resultsDir = path.join(harnessRoot, "results", `agent-${stamp}-${opts.case}`)
     await fs.promises.mkdir(resultsDir, { recursive: true })
     const result: Result = {
         case: opts.case, tool: opts.tool, verdict: "ERROR", failure: "",

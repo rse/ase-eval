@@ -12,6 +12,7 @@ import YAML      from "yaml"
 
 import { scriptLoad }  from "./ase-test-simulator.js"
 import type { Script } from "./ase-test-simulator.js"
+import { reviewLeaks } from "./ase-test-review.js"
 
 /*  the oracle specifications: each oracle is an object with exactly one key
     naming the oracle kind, mirroring the evaluation criteria of the agent
@@ -121,6 +122,17 @@ const oracleSchema = z.union([
             threshold:    z.number().min(0).max(1).default(0.7),
             votes:        z.number().int().min(1).default(3)
         })
+    }),
+
+    /*  a deterministic scoring of the findings table of an "ase-repo-review" output
+        against the expected-results list and the thresholds of a review benchmark
+        case (see "cases/review/" and "src/review/"), with a contamination check of all tool calls  */
+    z.strictObject({
+        review: z.strictObject({
+            expected:     z.string(),
+            thresholds:   z.string(),
+            in:           z.enum([ "lastMessage", "output" ]).default("lastMessage")
+        })
     })
 ])
 export type OracleSpec = z.infer<typeof oracleSchema>
@@ -144,6 +156,7 @@ const stageSchema = z.strictObject({
         maxUsd:     z.number().positive()
     }).optional(),
     turns:      turnsSchema.optional(),
+    disallowedTools: z.array(z.string()).optional(),
     oracles:    z.array(oracleSchema).optional()
 })
 
@@ -164,9 +177,15 @@ const caseSchema = z.strictObject({
         lifecycle:  z.string().optional(),
         config:     z.record(z.string(), z.unknown()).optional(),
         tasks:      z.array(z.string()).optional(),
-        files:      z.string().optional()
+        files:      z.string().optional(),
+        change:     z.strictObject({
+            files:      z.string(),
+            delete:     z.string().optional(),
+            message:    z.string()
+        }).optional()
     }).optional(),
     turns:      turnsSchema.optional(),
+    disallowedTools: z.array(z.string()).optional(),
     oracles:    z.array(oracleSchema).min(1)
 })
 
@@ -189,7 +208,16 @@ export type Stage = {
     timeoutSec: number
     maxUsd:     number
     turns:      Turns | null
+    disallowedTools: string[]
     oracles:    OracleSpec[]
+}
+
+/*  the optional change commit on top of the fixture commit: a file tree overlaid
+    onto the project, the project files removed, and the commit message  */
+export type FixtureChange = {
+    files:      string
+    delete:     string[]
+    message:    string
 }
 
 /*  a loaded and normalized test case, where a staged case carries the sum of
@@ -210,8 +238,10 @@ export type TestCase = {
         config:     Record<string, unknown> | null
         tasks:      string[]
         files:      string
+        change:     FixtureChange | null
     }
     turns:      Turns | null
+    disallowedTools: string[]
     oracles:    OracleSpec[]
     staged:     boolean
     stages:     Stage[]
@@ -232,8 +262,12 @@ export const caseLoad = (casesDir: string, file: string): TestCase => {
     if ([ spec.skill, spec.promptFile, spec.stages ].filter((input) => input !== undefined).length !== 1)
         throw new Error(`case "${name}": exactly one of "skill", "promptFile", or "stages" is required`)
     if (spec.stages !== undefined
-        && (spec.turns !== undefined || spec.timeoutSec !== undefined || spec.budget !== undefined))
-        throw new Error(`case "${name}": "turns", "timeoutSec", and "budget" belong to the stages of a staged case`)
+        && (spec.turns !== undefined || spec.timeoutSec !== undefined || spec.budget !== undefined
+            || spec.disallowedTools !== undefined))
+        throw new Error(`case "${name}": "turns", "timeoutSec", "budget", and "disallowedTools" ` +
+            "belong to the stages of a staged case")
+    if (spec.fixture?.change !== undefined && spec.fixture.git !== true)
+        throw new Error(`case "${name}": "fixture.change" requires "fixture.git"`)
     const resolve = (ref: string, kind: string): string => {
         const resolved = path.resolve(dir, ref)
         if (!resolved.startsWith(dir + path.sep))
@@ -277,6 +311,14 @@ export const caseLoad = (casesDir: string, file: string): TestCase => {
                 throw new Error(`case "${name}": suite "${oracle.suite.dir}" is no directory`)
             return { suite: { ...oracle.suite, dir: suite } }
         }
+        else if ("review" in oracle)
+            return {
+                review: {
+                    ...oracle.review,
+                    expected:   resolve(oracle.review.expected,   "expected"),
+                    thresholds: resolve(oracle.review.thresholds, "thresholds")
+                }
+            }
         return oracle
     }
 
@@ -300,6 +342,7 @@ export const caseLoad = (casesDir: string, file: string): TestCase => {
             timeoutSec: stage.timeoutSec ?? 300,
             maxUsd:     stage.budget?.maxUsd ?? 2.0,
             turns:      turnsLoad(stage.turns, where),
+            disallowedTools: stage.disallowedTools ?? [],
             oracles:    (stage.oracles ?? []).map(oracleResolve)
         }
     })
@@ -320,9 +363,17 @@ export const caseLoad = (casesDir: string, file: string): TestCase => {
             lifecycle:  spec.fixture?.lifecycle ?? "solo",
             config:     spec.fixture?.config ?? null,
             tasks:      (spec.fixture?.tasks ?? []).map((task) => resolve(task, "task")),
-            files:      spec.fixture?.files !== undefined ? resolve(spec.fixture.files, "files") : ""
+            files:      spec.fixture?.files !== undefined ? resolve(spec.fixture.files, "files") : "",
+            change:     spec.fixture?.change !== undefined ? {
+                files:      resolve(spec.fixture.change.files, "change"),
+                delete:     spec.fixture.change.delete !== undefined ?
+                    fs.readFileSync(resolve(spec.fixture.change.delete, "delete"), "utf8")
+                        .split(/\r?\n/).map((line) => line.trim()).filter((line) => line !== "") : [],
+                message:    spec.fixture.change.message
+            } : null
         },
         turns:      turnsLoad(spec.turns, ""),
+        disallowedTools: spec.disallowedTools ?? [],
         oracles:    spec.oracles.map(oracleResolve),
         staged,
         stages
@@ -337,9 +388,19 @@ export const caseLoad = (casesDir: string, file: string): TestCase => {
             timeoutSec: result.timeoutSec,
             maxUsd:     result.maxUsd,
             turns:      result.turns,
+            disallowedTools: result.disallowedTools,
             oracles:    []
         } ]
     caseCheckRes(result)
+
+    /*  a review benchmark case must give nothing away: reject hinting terms in the
+        fixture and the change commit message already at load time  */
+    if ([ ...result.oracles, ...result.stages.flatMap((stage) => stage.oracles) ].some((oracle) => "review" in oracle)) {
+        const leaks = reviewLeaks([ result.fixture.files, result.fixture.change?.files ?? "" ],
+            result.fixture.change?.message ?? "")
+        if (leaks.length > 0)
+            throw new Error(`case "${name}": fixture leaks hints at the expected results: ${leaks.slice(0, 5).join("; ")}`)
+    }
     return result
 }
 

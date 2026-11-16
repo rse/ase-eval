@@ -167,8 +167,8 @@ a free-text prompt), the number of runs and the pass@k threshold
 ASE configuration, seeded task store, file tree), the optional
 interactive turns (a scripted `answers.yaml` or an LLM-driven persona),
 and the oracles (`notErrored`, `verdict`, `regex`, `fileExists`,
-`gitDiff`, `taskStore`, `textMetric`, `exec`, `suite`, `rubric`, and
-`similar`). Instead of a single skill, a case can declare `stages`: a
+`gitDiff`, `taskStore`, `textMetric`, `exec`, `suite`, `rubric`,
+`similar`, and `review`). Instead of a single skill, a case can declare `stages`: a
 list of skill invocations run one after the other, each in its own
 session, but all in the *same* sandbox (e.g. brainstorm, plan, grill,
 and implement), see `cases/flow/brainstorm-grill-implement/`.
@@ -186,6 +186,13 @@ case-local directory `dir` is copied into the sandbox project only after
 the last session (and after the changeset diff was taken), so the skills
 never see the tests, and is run there via `python3 -m unittest discover
 -s <dir> -v`, passing only if every discovered test ran and passed.
+The `review` oracle scores an `ase-repo-review` output deterministically
+against the expected-results list (`expected`) and the thresholds
+(`thresholds`) of a review benchmark case, through the scorer of
+`src/review/lib/` (see `docs/review/README.md`). The review cases live
+in `cases/review/<name>/` and are discovered as `review/<name>`;
+their fixture adds a change commit (`fixture.change`) on top of the base
+commit, and their `disallowedTools` keep the review read-only.
 See the existing cases for the shapes, and
 `src/ase-test-case.ts` for the authoritative schema.
 
@@ -207,6 +214,8 @@ The defaults of an omitted `case.yaml` key:
 | `turns.maxTurns`                          | `16`               | *user* turns (the agentic turn cap is 4×)     |
 | `turns.model`                             | `claude-haiku-5-5` | resp. `$ASE_TEST_SIM_MODEL`                   |
 | `in` (`regex`, `textMetric`, `similar`)   | `lastMessage`      |                                               |
+| `review.in`                               | `lastMessage`      | resp. `output`                                |
+| `disallowedTools`                         | `[]`               | per case resp. stage, e.g. `[ Edit, Write ]`  |
 | `regex.flags`                             | `m`                | a JavaScript regex: no inline `(?i)`          |
 | `threshold`/`votes` (`rubric`, `similar`) | `0.7`/`3`          | judge model resp. `$ASE_TEST_JUDGE_MODEL`     |
 | `exec.timeoutSec`                         | `10`               | per command execution                         |
@@ -222,6 +231,24 @@ body of a task plan (with `id:`, `similar` only). A missing target file
 or task fails the oracle. The `exec` oracle runs both commands with the
 sandbox environment and compares stdout with trailing whitespace
 stripped; a failing `reference` command reports a case bug.
+
+The optional `fixture.change` (`files`, `delete`, `message`, requires
+`fixture.git`) creates a second commit on top of the base commit: the
+file tree `files` overlaid onto the project, the project files listed in
+the file `delete` removed, with the commit message `message`. Both
+commits get neutral messages and fixed dates, and the change commit is
+the baseline of the `gitDiff` oracle. The `review` oracle fails on an
+unparseable review, on any tool call reaching into `cases/review/`,
+`src/review/`, or the ASE repository outside `plugin/` and `tool/`
+(contamination),
+and when a threshold of the *single* run is not met; its per-run figures
+land under `metrics` in `result.json` and `summary.json`, and the review
+text in `review.log`. A case with a `review` oracle is rejected at load
+time if its fixture or change message contains a hinting term (the leak
+check of `src/review/lib/leak.mjs`). The standalone tools of the review
+benchmark (`run`, `measure`, `compare`, `check`, `prove`, `selftest`)
+live in `src/review/`, its documentation and measurement log in
+`docs/review/`, and its results go to `results/review/`.
 
 A staged case declares `stages` *instead* of `skill`/`promptFile`, and
 then carries `turns`, `timeoutSec`, and `budget` per stage instead of

@@ -14,10 +14,15 @@ import type { TestCase, OracleSpec } from "./ase-test-case.js"
 import type { Sandbox }              from "./ase-test-sandbox.js"
 import type { SessionResult }        from "./ase-test-session.js"
 import { judgeRubric, judgeSimilar } from "./ase-test-judge.js"
+import { reviewScore }               from "./ase-test-review.js"
 
-/*  the verdict of one oracle (with the raw judge scores of the LLM judge oracles), where
-    a diagnostic oracle of a stage explains a failure, but never decides the verdict  */
-export type OracleResult = { kind: string, pass: boolean, detail: string, scores?: number[], diagnostic?: boolean, log?: string }
+/*  the verdict of one oracle (with the raw judge scores of the LLM judge oracles resp. the
+    metrics of the review oracle), where a diagnostic oracle of a stage explains a failure,
+    but never decides the verdict  */
+export type OracleResult = {
+    kind: string, pass: boolean, detail: string, scores?: number[], diagnostic?: boolean, log?: string,
+    metrics?: Record<string, unknown>
+}
 
 /*  whether a skill reported an error in its output lines, as the skills report
     their errors as "▶ ERROR: ..." while the agent tool still exits successfully
@@ -333,6 +338,11 @@ export const oraclesRun = async (oracles: OracleSpec[], caze: TestCase, sandbox:
                 continue
             }
             results.push(await judgeSimilar(sandbox, fs.readFileSync(spec.expected, "utf8"), text, spec))
+        }
+        else if ("review" in oracle) {
+            const spec = oracle.review
+            const text = targetText(spec, caze, sandbox, result) ?? ""
+            results.push(reviewScore(text, spec.expected, spec.thresholds, result.messages))
         }
     }
     return results

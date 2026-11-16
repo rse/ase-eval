@@ -11,7 +11,7 @@
 
 set -euo pipefail
 
-#   operate from the directory of this script (the "test/" directory)
+#   operate from the directory of this script (the harness directory)
 cd "$(dirname "$0")"
 
 #   take option "--force-model" out of the passed-through harness options

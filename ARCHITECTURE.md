@@ -112,6 +112,7 @@ flowchart TD
     Q --> P["Task plans"] --> P1["taskStore, similar (taskBody)"]
     Q --> I["Asks the user questions"] --> I1["add turns: scripted or llm"]
     Q --> S["A flow of several skills"] --> S1["stages, with diagnostic oracles per stage"]
+    Q --> R["A code review of a seeded change"] --> R1["review (cases/review/)"]
 ```
 
 A *staged* case chains several skills, each in its own session, but all

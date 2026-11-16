@@ -14,8 +14,9 @@ import YAML      from "yaml"
 
 import type { TestCase } from "./ase-test-case.js"
 
-/*  the repository root (this module lives in "<repo>/test/src/")  */
-export const repoRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "..", "..")
+/*  the harness root (this module lives in "<harness>/src/") and the repository root (its parent)  */
+export const harnessRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "..")
+export const repoRoot    = path.resolve(harnessRoot, "..")
 
 /*  a fully isolated per-run sandbox: a private HOME (XDG directories,
     Claude settings, and credentials) plus a private project directory
@@ -51,8 +52,8 @@ const credentials = (home: string, env: Record<string, string>): void => {
 
 /*  create the sandbox of a single test run and materialize the fixture of the case:
     the optional Git repository, the ASE project configuration, the seeded task store,
-    and the fixture file tree, with the final fixture commit serving as the baseline
-    of the Git changeset diff oracle  */
+    the fixture file tree, and the optional change commit, with the final commit
+    serving as the baseline of the Git changeset diff oracle  */
 export const sandboxCreate = async (caze: TestCase, run: number): Promise<Sandbox> => {
     const slug = caze.name.replace(/[^a-zA-Z0-9]+/g, "-")
     const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), `ase-test-${slug}-r${run}-`))
@@ -122,8 +123,27 @@ const sandboxPopulate = async (caze: TestCase, root: string): Promise<Sandbox> =
         await git(sandbox, [ "init", "--initial-branch", "master" ])
         await git(sandbox, [ "config", "user.name",  "ASE Test" ])
         await git(sandbox, [ "config", "user.email", "ase-test@localhost" ])
-        await git(sandbox, [ "add", "--all" ])
-        await git(sandbox, [ "commit", "--allow-empty", "--no-verify", "-m", "fixture" ])
+        const change = caze.fixture.change
+        if (change === null) {
+            await git(sandbox, [ "add", "--all" ])
+            await git(sandbox, [ "commit", "--allow-empty", "--no-verify", "-m", "fixture" ])
+        }
+        else {
+            /*  a base commit plus a change commit on top (e.g. the change under review),
+                with neutral messages, fixed dates, and verbatim line endings, so the line
+                numbers of the change commit are deterministic and nothing hints at the case  */
+            const commit = async (message: string, date: string) => {
+                await git(sandbox, [ "add", "--all" ])
+                await git({ ...sandbox, env: { ...sandbox.env, GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date } },
+                    [ "commit", "--allow-empty", "--no-verify", "-q", "-m", message ])
+            }
+            await git(sandbox, [ "config", "core.autocrlf", "false" ])
+            await commit("Initial version", "2026-05-04T09:00:00Z")
+            await fs.promises.cp(change.files, project, { recursive: true })
+            for (const file of change.delete)
+                await fs.promises.rm(path.join(project, file), { force: true })
+            await commit(change.message, "2026-05-11T14:30:00Z")
+        }
         const { stdout } = await git(sandbox, [ "rev-parse", "HEAD" ])
         sandbox.baseRef = stdout.trim()
     }

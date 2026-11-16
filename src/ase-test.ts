@@ -14,7 +14,7 @@ import { execa }   from "execa"
 
 import { caseDiscover }                    from "./ase-test-case.js"
 import type { TestCase }                   from "./ase-test-case.js"
-import { sandboxCreate, sandboxTeardown, repoRoot } from "./ase-test-sandbox.js"
+import { sandboxCreate, sandboxTeardown, harnessRoot, repoRoot } from "./ase-test-sandbox.js"
 import type { Sandbox }                    from "./ase-test-sandbox.js"
 import { runSession }                      from "./ase-test-session.js"
 import type { SessionResult }              from "./ase-test-session.js"
@@ -62,7 +62,7 @@ if (llmProfile !== undefined && llmProfile !== "") {
 }
 
 /*  discover and filter the cases  */
-const casesDir = path.join(repoRoot, "test", "cases")
+const casesDir = path.join(harnessRoot, "cases")
 let cases = caseDiscover(casesDir)
 if (globs.length > 0) {
     const matchers = globs.map((glob) => picomatch(glob))
@@ -107,7 +107,7 @@ if (cases.some((caze) => caze.oracles.some((oracle) => "suite" in oracle))
 /*  the results directory of this harness invocation  */
 const timestamp  = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19)
 const resultsDir = opts.results !== undefined ?
-    path.resolve(opts.results) : path.join(repoRoot, "test", "results", timestamp)
+    path.resolve(opts.results) : path.join(harnessRoot, "results", timestamp)
 
 /*  the global budget state and the parallelism, where the jobs default is resolved
     only here, after the LLM gateway profile could set "ASE_TEST_JOBS" (non-numeric
@@ -201,6 +201,7 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
         const last   = results[results.length - 1]
         const where  = `stage ${results.length} (${caze.stages[results.length - 1].skill})`
         const result: SessionResult = !caze.staged ? last : {
+            messages:     results.flatMap((r) => r.messages),
             output:       results.flatMap((r) => r.output),
             lastText:     last.lastText,
             dialog:       results.flatMap((r) => r.dialog),
@@ -342,7 +343,7 @@ const outcomes: CaseOutcome[] = cases.map((caze) => {
 const pluginCommit = await execa("git", [ "rev-parse", "HEAD" ], { cwd: repoRoot, reject: false })
     .then(({ stdout }) => (stdout ?? "").trim())
 const sdkVersion = await fs.promises.readFile(
-    path.join(repoRoot, "test", "node_modules", "@anthropic-ai", "claude-agent-sdk", "package.json"), "utf8")
+    path.join(harnessRoot, "node_modules", "@anthropic-ai", "claude-agent-sdk", "package.json"), "utf8")
     .then((text) => (JSON.parse(text) as { version?: string }).version ?? "").catch(() => "")
 const meta = {
     timestamp,

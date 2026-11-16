@@ -20,7 +20,7 @@
 
 set -euo pipefail
 
-#   operate from the directory of this script (the "test/" directory)
+#   operate from the directory of this script (the harness directory)
 cd "$(dirname "$0")"
 
 #   the cases run in parallel: the sequential agent pipeline and the agent fleet

@@ -1,0 +1,23 @@
+#   review benchmark case "correctness-cents" of "ase-repo-review" (see "docs/review/README.md"):
+#   a base commit plus a change commit with seeded defects and decoys, reviewed
+#   read-only and scored deterministically against "solution/expected.json"
+skill: ase-repo-review
+args: "-c HEAD -S LOW"
+runs: 3
+minPass: 2
+timeoutSec: 1200
+budget: { maxUsd: 5.00 }
+disallowedTools: [ Edit, Write, NotebookEdit, WebFetch, WebSearch ]
+fixture:
+    git: true
+    config: { project: { id: shop, name: Shop, boxing: white } }
+    files: fixture/base
+    change:
+        files:   fixture/change
+        message: "Update order handling"
+oracles:
+    - notErrored: true
+    - gitDiff: { empty: true }
+    - review:
+          expected:   solution/expected.json
+          thresholds: thresholds.json

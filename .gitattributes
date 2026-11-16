@@ -1,0 +1,2 @@
+cases/review/**       text eol=lf
+src/review/testdata/** text eol=lf

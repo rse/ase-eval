@@ -26,6 +26,7 @@ export type SessionRecord = {
     "turns" counts the result messages, i.e. the completed agentic turns, not
     the user turns of the "turns.maxTurns" case setting)  */
 export type SessionResult = {
+    messages:     Record<string, any>[]
     output:       string[]
     lastText:     string
     dialog:       DialogEntry[]
@@ -55,7 +56,7 @@ export const skillPrompt = (skill: string, args: string): string => {
 export const runSession = async (stage: Stage, sandbox: Sandbox,
     simulator: Simulator | null, record: SessionRecord): Promise<SessionResult> => {
     const result: SessionResult = {
-        output: [], lastText: "", dialog: [], sessionId: "", model: "",
+        messages: [], output: [], lastText: "", dialog: [], sessionId: "", model: "",
         costUsd: 0, costAccurate: true, turns: 0, errored: false, crashed: false, timedOut: false, failure: ""
     }
     const prompt = stage.skill !== "" ? skillPrompt(stage.skill, stage.args) : stage.prompt
@@ -114,10 +115,12 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         stderr:          record.onStderr,
         ...(process.env.ASE_TEST_MODEL !== undefined ? { model: process.env.ASE_TEST_MODEL } : {}),
 
-        /*  an "AskUserQuestion" call is answered by allowing it with the simulator's
+        /*  the tools disallowed by the case (e.g. all writing tools of a review), and
+            an "AskUserQuestion" call is answered by allowing it with the simulator's
             answers injected into its input (pre-supplied answers skip the interactive
             dialog), while every other permission request is blanket-allowed  */
-        ...(simulator === null ? { disallowedTools: [ "AskUserQuestion" ] } : {
+        disallowedTools: [ ...stage.disallowedTools, ...(simulator === null ? [ "AskUserQuestion" ] : []) ],
+        ...(simulator === null ? {} : {
             canUseTool: async (toolName, toolInput) => {
                 if (toolName === "AskUserQuestion") {
                     const questions = (toolInput as { questions?: Question[] }).questions ?? []
@@ -147,6 +150,7 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
     try {
         for await (const msg of query({ prompt: input(), options })) {
             record.onMessage(msg as Record<string, any>)
+            result.messages.push(msg as Record<string, any>)
             if (msg.type === "system" && msg.subtype === "init") {
                 result.sessionId = msg.session_id
                 result.model     = msg.model

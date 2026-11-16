@@ -115,6 +115,15 @@ const describeOracle = (caze: TestCase, oracle: OracleSpec): string[] => {
             `(threshold: ${oracle.similar.threshold.toFixed(2)}, votes: ${oracle.similar.votes}):`)
         fileBlock(oracle.similar.expected)
     }
+    else if ("review" in oracle) {
+        const thresholds = JSON.parse(fs.readFileSync(oracle.review.thresholds, "utf8")) as Record<string, unknown>
+        const limits     = Object.entries(thresholds)
+            .filter(([ key ]) => /^(recall|decoy)_/.test(key)).map(([ key, value ]) => `${key}: ${String(value)}`)
+        lines.push(`    - ${oracle.review.in} is a review whose findings, matched by file and line against ` +
+            `"${path.relative(caze.dir, oracle.review.expected)}", meet the thresholds of ` +
+            `"${path.relative(caze.dir, oracle.review.thresholds)}" (${limits.join(", ")}), ` +
+            "and no tool call accessed the benchmark or the ASE repository outside \"plugin/\" and \"tool/\"")
+    }
     return lines
 }
 
@@ -163,7 +172,13 @@ export const describeCase = (caze: TestCase): string => {
         fixture.push(`config ${JSON.stringify(caze.fixture.config)}`)
     for (const task of caze.fixture.tasks)
         fixture.push(`task ${taskSummary(task)}`)
+    if (caze.fixture.change !== null)
+        fixture.push(`change commit "${caze.fixture.change.message}" of ` +
+            `files "${path.relative(caze.dir, caze.fixture.change.files)}"` +
+            (caze.fixture.change.delete.length > 0 ? ` (deleting ${caze.fixture.change.delete.join(", ")})` : ""))
     lines.push(`    fixture:   ${fixture.join(", ")}`)
+    if (caze.disallowedTools.length > 0)
+        lines.push(`    disallow:  ${caze.disallowedTools.join(", ")}`)
     if (caze.turns !== null)
         lines.push(`    ${describeTurns(caze, caze.turns)}`)
 

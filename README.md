@@ -2,6 +2,12 @@
 ASE Skill Test Harness
 ======================
 
+
+This repository is part of [**ASE**](https://github.com/rse/ase) and has
+to be checked out as the directory `test/` of it, as the harness loads
+the `plugin/` and the built `tool/` of the surrounding **ASE** working
+copy.
+
 ## About
 
 This directory holds the skill test harness of **ASE** (not shipped
@@ -248,7 +254,3 @@ state, task store, and service port, so runs are parallel-safe. The
 sandbox is torn down after the run (`ase service stop` plus removal),
 unless `-k`/`-K` keeps it for inspection.
 
-This repository is part of [**ASE**](https://github.com/rse/ase) and has
-to be checked out as the directory `test/` of it, as the harness loads
-the `plugin/` and the built `tool/` of the surrounding **ASE** working
-copy.

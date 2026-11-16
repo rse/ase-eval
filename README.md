@@ -31,7 +31,7 @@ npm install # executed inside the ase-eval dir
 ./run_agent_test_local.sh
 ./run_agent_test_local.sh
 ```
-4. Force a specific model; this is especially useful when testing again a
+4. Force a specific model; this is especially useful when testing against a
 liteLLM proxy.
 ```
 # first run claude to see what models are available:
@@ -41,7 +41,11 @@ echo '{"type":"control_request","request_id":"1","request":{"subtype":"initializ
   | jq -r 'select(.type=="control_response") | .response.response.models[] | "\(.value)\t\(.resolvedModel // "")\t\(.displayName)"'
 
 # once you know the name of the model, you can force it: 
+./run_all_tests.sh --force-model <model name>
+# examples: 
 ./run_all_tests.sh --force-model eu.anthropic.claude-sonnet-5
+./run_all_tests.sh --force-model global.openai.gpt-6-sol
+./run_all_tests.sh --force-model deepseek.v3.2
 
 # this basically aliases all models to this specific model
 

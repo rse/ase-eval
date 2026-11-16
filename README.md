@@ -4,9 +4,34 @@ ASE Skill Test Harness
 
 
 This repository is part of [**ASE**](https://github.com/rse/ase) and has
-to be checked out as the directory `test/` of it, as the harness loads
+to be checked out as a direct subdirectory of it (e.g. `ase-eval/`), as the harness loads
 the `plugin/` and the built `tool/` of the surrounding **ASE** working
 copy.
+
+
+## Quickstart
+
+1. First checkout this repo into the [**ASE**](https://github.com/rse/ase) repo:
+```
+cd <path/to/ase>
+git clone https://github.com/rse/ase-eval.git
+```
+1. Install the dependecies:
+```
+cd ase-test
+npm install
+```
+
+1. Run the tests
+```
+# run against the models claude code uses
+./run_all_tests.sh
+./run_agent_test.sh
+# run against model reachable via some LLM proxy (e.g. local models):
+./run_agent_test_local.sh
+./run_agent_test_local.sh
+```
+
 
 ## About
 

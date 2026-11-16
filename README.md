@@ -14,15 +14,15 @@ copy.
 1. First checkout this repo into the [**ASE**](https://github.com/rse/ase) repo:
 ```
 cd <path/to/ase>
-git clone https://github.com/rse/ase-eval.git
+git clone https://github.com/rse/ase-eval.git # executed inside ASE repo dir
 ```
-1. Install the dependecies:
+2. Install the dependecies:
 ```
-cd ase-test
-npm install
+cd ase-eval
+npm install # executed inside the ase-eval dir
 ```
 
-1. Run the tests
+3. Run the tests
 ```
 # run against the models claude code uses
 ./run_all_tests.sh

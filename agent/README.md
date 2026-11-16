@@ -4,59 +4,188 @@ ASE Agent End-to-End Test
 ## About
 
 This directory holds a standalone end-to-end system test of `ase agent`.
-Unlike the skill harness in `test/src/`, it doesn't drive skills through
-the Agent SDK. Instead, it runs the real built-in agents as separate
-processes, the same way a user would:
+Unlike the skill harness in `src/`, it does not drive skills through the
+Agent SDK. Instead, it runs the real built-in agents `implementer`,
+`qualifier` (mode `qualify`), and `integrator` (mode `squash`) as separate
+processes, the same way a user would, and drives one task fixture through
+the `enterprise` lifecycle from `PLANNED` to `INTEGRATED`. A black-box
+Python test suite then checks the program the agents left on `master`.
 
-1.  **Sandbox**: a fresh temporary directory with a private `HOME`
-    (where the ASE plugin of the working copy is installed via
-    `ase setup install --dev`) and a private Git project on `master`.
-2.  **Task**: the case fixture `task.md` is saved into the task store
-    as the task of `case.json` (e.g., `wordcount`) in status `PLANNED`,
-    with the `enterprise` lifecycle model.
-3.  **Agents**: `implementer`, `qualifier` (mode `qualify`), and
-    `integrator` (mode `squash`) run, depending on the `runner` of
-    `case.json`:
-    -   `pipeline`: one after the other with `--foreground --one-shot`.
-        After each agent, the test checks that the task reached the
-        expected status (`IMPLEMENTED`, `QUALIFIED`, `INTEGRATED`), and
-        stops early if it didn't.
-    -   `fleet`: all together as a background `ase agent fleet`
-        (configured by a versioned `.ase/fleet.yaml`, with the
-        fleet-owned agent relay), which the test checks (all members
-        running, agents present on the relay), follows until the task
-        is `INTEGRATED` or left the happy path, and finally stops.
-
-    All agent output goes to the console and to `agents.log`.
-4.  **Verification**: the task is `INTEGRATED`, the program of
-    `case.json` (e.g., `wordcount.py`) is on `master`, and the working
-    copy is clean. The case fixture test
-    suite `suite/` (Python `unittest`, standard library only) is then
-    run against the produced program, where **every** discovered test
-    has to pass (no failures, errors, or skips).
-5.  **Report**: a console summary, plus `report.md`, `result.json`, and
-    all artifacts in `test/results/agent-<timestamp>-<case>/`.
-
-The driver `ase-agent-test.mts` has no dependencies. Node >= 22.22 runs
-it directly through type stripping. It uses only Node built-ins,
-spawns processes without a shell, runs `ase` as
-`node tool/bin/ase`, and finds Python as `python3`, `python`, or
-`py -3`. This way it works on Linux, macOS, and Windows alike.
+The driver `ase-agent-test.mts` has no dependencies: Node >= 22.22 runs it
+directly through type stripping. It spawns processes without a shell,
+runs `ase` as `node <ASE>/tool/bin/ase` (the `tool/` of the surrounding
+ASE working copy, i.e., `../tool`), and finds Python as `python3`,
+`python`, or `py -3`, so it works on Linux, macOS, and Windows alike.
 
 > **Notice:** A real run spends real AI tokens (about $1.60 per case).
-> It is never part of `build` or `publish`.
+
+## Flow
+
+```mermaid
+flowchart TD
+    P["Preflight: Node, case files, case.json, built tool, git, agent tool, options, Python, suite count"]
+    P -->|"fails"| E2["exit 2 (ERROR)"]
+    P --> SO{"--suite-only?"}
+    SO -->|"yes"| SU1["run suite against the given directory"] --> R
+    SO -->|"no"| SB["Sandbox: private HOME + project, filtered env"]
+    SB --> IN["ase setup install --dev (plugin of the working copy)"]
+    IN --> BO["git init, .gitignore, lifecycle, config, task save (+ fleet.yaml), commit"]
+    BO --> DR{"--dry-run?"}
+    DR -->|"yes"| CH
+    DR -->|"no"| RU{"runner of case.json"}
+    RU -->|"pipeline"| PL["agents one after the other, --foreground --one-shot"]
+    RU -->|"fleet"| FL["ase agent fleet start, follow, stop"]
+    PL --> CH["Checks: INTEGRATED, program on master, clean master"]
+    FL --> CH
+    CH --> SU2["run suite (if the program exists)"]
+    SU2 --> AR["collect task.md, git.log, program"]
+    AR --> TD["Teardown: fleet stop, service stop, keep or remove sandbox"]
+    TD --> R["result.json + report.md, exit 0 / 1 / 2"]
+```
+
+The task passes the statuses of the `enterprise` lifecycle model, each
+agent claiming it in its incoming status and leaving it in its success
+or failure status (`ase man ase-agent`):
+
+```mermaid
+stateDiagram-v2
+    [*] --> PLANNED
+    PLANNED --> IMPLEMENTING: implementer
+    IMPLEMENTING --> IMPLEMENTED
+    IMPLEMENTING --> STALLED: failure
+    IMPLEMENTED --> QUALIFYING: qualifier
+    QUALIFYING --> QUALIFIED: APPROVE
+    QUALIFYING --> DECLINED: REJECT
+    QUALIFIED --> INTEGRATING: integrator
+    INTEGRATING --> INTEGRATED
+    INTEGRATING --> DEFERRED: failure
+    INTEGRATED --> [*]
+```
+
+## Steps
+
+1.  **Preflight**: Node >= 22.22, the case files, a valid `case.json`,
+    a built `../tool` (`dst/ase.js`), `git` and the agent tool in `$PATH`,
+    valid `--tool`, `--timeout`, and `--max-cost-usd`, Python >= 3.8, and
+    a loadable, non-empty test suite. The results directory is created
+    before, so even an infrastructure error leaves `result.json` and
+    `report.md`.
+2.  **Sandbox**: `<tmpdir>/ase-agent-test-XXXXXX/` with `home/` and
+    `project/`. The environment is the developer environment without all
+    `ASE_*`, `CLAUDE*`, `ANTHROPIC_*`, `GITHUB_*`, `GH_*`, `OPENAI_*`, and
+    other credential variables, plus `HOME`/`USERPROFILE`, the XDG
+    directories below it, `../tool/bin` first in `PATH`,
+    `ASE_SETUP_DEV_BASEDIR`, `NO_UPDATE_NOTIFIER=1`, and
+    `GIT_TERMINAL_PROMPT=0`. Credentials are added back (see
+    Prerequisites), and `settings.json` sets `disableClaudeAiConnectors`.
+3.  **Plugin**: `ase setup install --dev --tool <tool>` installs the
+    plugin of the working copy into the sandbox `HOME`, as the agents
+    spawn plain agent tool sessions, which only see installed plugins.
+4.  **Project and task**: `git init` on `master`, `.gitignore` with
+    `.ase/task/`, `ase task lifecycle enterprise`, `project.id
+    ase-agent-test`, `project.task.default.{source,changeset,target}` set
+    to `branch:master`, `branch:cs-{id}`, `branch:master`, `ase task save
+    --create <task> < task.md`, a fleet case also writes `.ase/fleet.yaml`,
+    then everything is committed and the working copy must be clean.
+    Three details matter:
+    -   Only `.ase/task/` is ignored: the agents run `git add --all -- .
+        ':(exclude).ase'`, which Git refuses if `.ase` itself is ignored.
+    -   The built-in defaults (`worktree`, `worktree`, `source`) would
+        keep the implementation uncommitted; branches also cover `branch:`
+        changesets and ASE worktrees.
+    -   The ASE project files are committed, as any untracked file on
+        `master` lets the merge of the integrator fail (`DEFERRED`).
+5.  **Agents**: per the `runner` of `case.json` (see below); skipped by
+    `--dry-run`. The status is probed via `ase task status <task>:` and
+    the `Tags:` line of `ase task load <task>`.
+6.  **Checks**: task `INTEGRATED`, the program of `case.json` in the tree
+    of `master`, HEAD on `master` with a clean working copy, and the test
+    suite run against the project (only if the program file exists).
+7.  **Artifacts and teardown**: final `task.md`, `git.log`, the program;
+    `ase agent fleet stop` (fleet cases, also copying `fleet.log`) and
+    `ase service stop`; the sandbox is removed unless kept.
+
+### Runner `pipeline`
+
+```sh
+ase agent implementer start --foreground --one-shot --tool <tool> --timeout <t> --params effort-wait=false
+ase agent qualifier   start --foreground --one-shot --tool <tool> --timeout <t> --mode qualify
+ase agent integrator  start --foreground --one-shot --tool <tool> --timeout <t> --mode squash
+```
+
+Each agent runs until no work is left (killed at `--timeout` + 5 min).
+The pipeline stops early once an agent exits non-zero, times out, leaves
+the task in another status than expected (`IMPLEMENTED`, `QUALIFIED`,
+`INTEGRATED`) or with a `:failed` tag, or the summed costs exceed
+`--max-cost-usd` (checked between the agents).
+
+### Runner `fleet`
+
+```mermaid
+sequenceDiagram
+    participant D as Driver
+    participant F as Fleet supervisor
+    participant R as Agent relay
+    participant A as Agents
+    D->>F: ase agent fleet start (max. 3 min)
+    F->>R: start (per-user, free port)
+    F->>A: start implementer, qualifier, integrator
+    D->>F: ase agent fleet status: all 4 members "running"?
+    loop up to 15 times, 2 s apart
+        D->>R: GET /projects/ase-agent-test/agents (address, port, token of relay.yaml)
+    end
+    loop every 5 s
+        A->>A: hand the task over via the task store
+        D->>D: read .ase/agent/fleet.log, probe task status and tags
+    end
+    Note over D: until INTEGRATED without :active, a dead-end status or :failed tag, cost ceiling, or 3 x --timeout since the start
+    D->>F: ase agent fleet stop
+    D->>F: ase agent fleet status must exit non-zero
+    D->>R: relay must be unreachable
+```
+
+The relay is queried over HTTP directly, as the host-local probe of `ase
+agent relay status` fails with undici 8 under Node 24. A status passed
+between two polls still counts as reached, by the order of the happy
+path. The report shows per agent the time from the fleet start until the
+task reached its status, and its cost from its prefixed log lines; the
+exit code column of a fleet row is always `0`.
+
+## Pass Criteria
+
+The verdict is `PASS` if, and only if, every *check* passes:
+
+-   `task integrated`, `<program> on master`, `working copy clean on
+    master`, and `all suite tests passed` (the number of tests run equals
+    the number discovered, every test reports `ok`, no failures, errors,
+    or skips)
+-   fleet cases additionally: `fleet started`, `fleet running with all
+    members`, `agents present on the agent relay`, and `fleet stopped with
+    its agent relay`
+
+> **Notice:** An early stop of the pipeline or fleet (failed agent,
+> `:failed` tag, cost ceiling, timeout) is reported as `failure`, but
+> fails the run only through the checks. So a run still passes if the
+> last agent exits non-zero, times out, or exceeds the cost ceiling
+> *after* the task reached `INTEGRATED`.
+
+`--dry-run` still runs the checks and collects the artifacts (the checks
+fail, as no agent ran), but its verdict is `PASS` if the task was saved
+as `PLANNED`.
 
 ## Prerequisites
 
--   a fully built `tool/` (`cd tool && npm start build`)
+-   a fully built ASE tool (`cd ../tool && npm start build`)
 -   `git`, Python >= 3.8, and the agent tool (`claude` by default) in
     `$PATH`
--   agent tool credentials: `ANTHROPIC_API_KEY` or
-    `CLAUDE_CODE_OAUTH_TOKEN`, or a `~/.claude/.credentials.json` from a
-    regular login, which is copied into the sandbox `HOME`. For `codex`
-    and `copilot`, the test passes through `OPENAI_API_KEY`,
+-   agent tool credentials, passed into the sandbox as exactly one of:
+    `ANTHROPIC_API_KEY`, else `CLAUDE_CODE_OAUTH_TOKEN`, else (for
+    `--tool claude` only) a copy of `~/.claude/.credentials.json` from a
+    regular login. For `codex` and `copilot`, `OPENAI_API_KEY`,
     `CODEX_API_KEY`, `COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, and
-    `GITHUB_TOKEN`.
+    `GITHUB_TOKEN` are passed through. `ANTHROPIC_BASE_URL`,
+    `ANTHROPIC_AUTH_TOKEN`, and `ANTHROPIC_(DEFAULT_*_)MODEL` are always
+    passed through (gateways, model pinning).
 
 ## Usage
 
@@ -65,72 +194,58 @@ node agent/ase-agent-test.mts --dry-run          # set up the sandbox and task o
 node agent/ase-agent-test.mts                    # full run of case "wordcount-python"
 node agent/ase-agent-test.mts --keep-failed      # keep the sandbox of a failed run for inspection
 node agent/ase-agent-test.mts --tool codex --timeout 20m --max-cost-usd 3
-npm start test-agent                             # the same via stx (inside test/)
-./run_agent_test.sh                              # all cases in parallel, after a cost confirmation (inside test/)
+npm start test-agent                             # the same via stx
+./run_agent_test.sh                              # all cases in parallel, after a cost confirmation
 ./run_agent_test.sh --case fibonacci-fleet       # a single case, after a cost confirmation
-./run_agent_test_local.sh [<profile>]            # all cases against a local model gateway (no confirmation)
+./run_agent_test_local.sh [<profile>] [<opts>]   # all cases against a local model gateway
 ```
 
-`run_agent_test.sh` runs the cases `wordcount-python` and
-`fibonacci-fleet` in parallel (each in its own sandbox, with its output
-prefixed by `[<case>]`), passes all further options to both, prints one
-verdict line per case, and exits with the worst exit code. With
-`--case` or `--suite-only`, it runs only a single test. With
-`ASE_TEST_JOBS=1`, the cases run one after the other, and
-`ASE_AGENT_TEST_CONFIRM=0` skips the cost confirmation.
-`run_agent_test_local.sh` exports an LLM gateway profile (see
-`etc/llm-local.env.sample`, which sets `ASE_TEST_JOBS=1`, as a single local
-model handles concurrent generation poorly) and then runs
-`run_agent_test.sh` without the confirmation.
+Options of `ase-agent-test.mts`:
 
-Options:
+| Option                          | Meaning                                                               | Default          |
+|---------------------------------|-----------------------------------------------------------------------|------------------|
+| `--case <name>`                 | the case directory below `cases/`                                     | `wordcount-python` |
+| `--tool claude\|copilot\|codex` | the agent tool of the agents                                          | `$ASE_TOOL`, else `claude` |
+| `--timeout <n>s\|m\|h`          | the maximum processing time per task of each agent                    | `30m`            |
+| `--max-cost-usd <usd>`          | stop the pipeline (between agents) resp. the fleet (polled every 5 s) | `5`              |
+| `--keep`, `--keep-failed`       | keep the sandbox always, resp. unless the run passed                  |                  |
+| `--suite-only <dir>`            | only run the suite against an existing project directory (after the full preflight), no sandbox, no agents | |
+| `--dry-run`                     | everything except the agents                                          |                  |
+| `-h`, `--help`                  | usage                                                                 |                  |
 
--   `--case <name>`: the case directory below `cases/` (default:
-    `wordcount-python`)
--   `--tool claude|copilot|codex`: the agent tool of the agents
-    (default: `$ASE_TOOL`, else `claude`)
--   `--timeout <n>s|m|h`: the maximum processing time per task of each
-    agent (default: `30m`)
--   `--max-cost-usd <usd>`: stop the pipeline resp. the fleet once the
-    summed agent costs exceed this value (default: `5`)
--   `--keep`, `--keep-failed`: keep the sandbox (always, resp. unless
-    the run passed)
--   `--suite-only <dir>`: only run the test suite against the program
-    in an existing directory (e.g., `project/` of a kept sandbox), with
-    no sandbox and no agents
--   `--dry-run`: only check the setup (sandbox, plugin installation,
-    and task feed), without running the agents
+The wrappers:
 
-Exit codes: `0` passed, `1` failed (pipeline or test suite), `2`
-infrastructure error (missing prerequisites, failed setup).
+| Wrapper                    | Behavior                                                                                       |
+|----------------------------|------------------------------------------------------------------------------------------------|
+| `run_agent_test.sh`        | runs all cases in parallel (output prefixed by `[<case>]`), passes all options on, prints a summary, exits with the worst exit code; `--case <name>` runs one case with summary; `--suite-only`, `-h`, `--help` exec one plain run without summary; `--force-model <model>` sets `ANTHROPIC_MODEL` and `ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL`; the cost confirmation is skipped for `--dry-run`, `--suite-only`, `--help`, and with `ASE_AGENT_TEST_CONFIRM=0`; `ASE_TEST_JOBS=1` runs the cases one after the other |
+| `run_agent_test_local.sh`  | takes the gateway profile from its first argument, else `$ASE_TEST_LLM`, else `etc/llm-local.env` (else exit `2`), exports it (exported variables win), pins all model aliases onto `ANTHROPIC_MODEL` (else `$ASE_TEST_MODEL`, else `default_model`), unsets `ANTHROPIC_AUTH_TOKEN`, and runs `run_agent_test.sh` without confirmation |
+
+Exit codes: `0` passed, `1` failed (a check), `2` infrastructure error
+(preflight, setup, or an unexpected exception).
 
 ## Cases
 
 A case is a directory `cases/<name>/` with:
 
--   `case.json`: the case configuration, e.g.
-    `{ "task": "wordcount", "program": "wordcount.py", "runner": "pipeline" }`,
-    with the task id of the fixture, the program file the agents have
-    to commit to `master`, and the runner, `pipeline` (the agents one
-    after the other in the foreground) or `fleet` (all agents together
-    via `ase agent fleet`, with the fleet run for at most 3 × `--timeout`).
--   `task.md`: the task fixture in the ASE task format, with the `Id:`
-    of `case.json` and `Status: PLANNED`. The specification has to be
-    precise enough for the test suite to be deterministic.
--   `suite/`: the test suite, discovered via
-    `python -m unittest discover -s suite`. It finds the produced
-    project through `$AGENT_TEST_PROJECT` and runs the program through
-    `sys.executable`.
+-   `case.json`: `{ "task": <id>, "program": <file>, "runner": "pipeline" | "fleet" }`,
+    the task id of the fixture, the program the agents have to commit to
+    `master`, and the runner
+-   `task.md`: the task fixture in the ASE task format, with the `Id:` of
+    `case.json` and `Status: PLANNED`, precise enough for a deterministic
+    test suite
+-   `suite/`: the test suite (Python `unittest`, standard library only),
+    discovered via `python -m unittest discover -s suite`; it finds the
+    produced project through `$AGENT_TEST_PROJECT` and runs the program
+    through `sys.executable`
+-   `TEST-DESCRIPTION.md`: purpose, coverage, and suite of the case
 
-| Case               | Runner     | Program        | Cost (approx.) |
-|--------------------|------------|----------------|----------------|
-| `wordcount-python` | `pipeline` | `wordcount.py` | $1.60          |
-| `fibonacci-fleet`  | `fleet`    | `fibonacci.py` | $1.60          |
+| Case               | Runner     | Program        | Tests | Cost (approx.) |
+|--------------------|------------|----------------|-------|----------------|
+| `wordcount-python` | `pipeline` | `wordcount.py` | 12    | $1.60          |
+| `fibonacci-fleet`  | `fleet`    | `fibonacci.py` | 13    | $1.60          |
 
-Each case documents its details in its `TEST-DESCRIPTION.md`.
-
-To check the test suite itself without any agent, run it against a
-reference implementation in a scratch directory:
+To check a test suite itself without any agent, run it against a
+reference implementation:
 
 ```sh
 AGENT_TEST_PROJECT=/path/to/reference python3 -m unittest discover -s agent/cases/wordcount-python/suite -v
@@ -138,13 +253,15 @@ AGENT_TEST_PROJECT=/path/to/reference python3 -m unittest discover -s agent/case
 
 ## Artifacts
 
-| File           | Content                                                        |
-|----------------|----------------------------------------------------------------|
-| `report.md`    | verdict, pipeline table (exit, duration, status, cost), checks |
-| `result.json`  | the same, machine-readable                                     |
-| `agents.log`   | the full output of all agents, prefixed by agent name          |
-| `suite.log`    | the verbose `unittest` output                                  |
-| `task.md`      | the final task plan, including the `agent` log attachment      |
-| `git.log`      | the commit graph of all branches with file stats               |
-| `fleet.log`    | the shared log of the fleet and its members (`fleet` only)     |
-| *program*      | the program the agents produced (e.g., `wordcount.py`)         |
+In `results/agent-<timestamp>-<case>/`:
+
+| File           | Content                                                                         |
+|----------------|---------------------------------------------------------------------------------|
+| `report.md`    | verdict and failure, tool/duration/cost, pipeline table, checks, suite table, artifact list |
+| `result.json`  | the same, machine-readable                                                      |
+| `agents.log`   | the output of all agents, prefixed by agent name (fleet: the lines of `fleet.log` as followed) |
+| `suite.log`    | the verbose `unittest` output                                                   |
+| `task.md`      | the final task plan, including the `agent` log attachment                       |
+| `git.log`      | the commit graph of all branches with file stats                                |
+| `fleet.log`    | the complete log of the fleet and its members (fleet cases only)                |
+| *program*      | the program the agents produced (e.g., `wordcount.py`)                          |

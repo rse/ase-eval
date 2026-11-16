@@ -55,7 +55,7 @@ const { values: opts } = util.parseArgs({
 })
 if (opts.help) {
     process.stdout.write(
-        "usage: node test/agent/ase-agent-test.mts [--case <name>] [--tool claude|copilot|codex]\n" +
+        "usage: node agent/ase-agent-test.mts [--case <name>] [--tool claude|copilot|codex]\n" +
         "       [--timeout <duration>] [--max-cost-usd <usd>] [--keep|--keep-failed] [--dry-run]\n" +
         "       [--suite-only <project-dir>]\n")
     process.exit(0)
@@ -157,7 +157,7 @@ const preflight = async (): Promise<string[]> => {
             "and \"runner\" (\"pipeline\" or \"fleet\")")
     caseCfg = { task: cfg.task, program: cfg.program, runner: cfg.runner }
     if (!fs.existsSync(path.join(repoRoot, "tool", "dst", "ase.js")))
-        throw new InfraError("ASE tool not built: run \"cd tool && npm start build\" first")
+        throw new InfraError("ASE tool not built: run \"cd ../tool && npm start build\" first")
     if ((await exec("git", [ "--version" ], { timeout: 10 * 1000 })).code !== 0)
         throw new InfraError("\"git\" not found in $PATH")
     if (!/^(claude|copilot|codex)$/.test(opts.tool))
@@ -176,7 +176,7 @@ const preflight = async (): Promise<string[]> => {
 interface Sandbox { root: string, home: string, project: string, env: Record<string, string> }
 
 /*  create the sandbox, with an environment mirroring the one of the skill test
-    harness (see "test/src/ase-test-sandbox.ts"): the developer environment without
+    harness (see "src/ase-test-sandbox.ts"): the developer environment without
     agent tool, ASE, and credential state, plus exactly one agent tool credential  */
 const sandboxCreate = async (): Promise<Sandbox> => {
     const root    = await fs.promises.mkdtemp(path.join(os.tmpdir(), "ase-agent-test-"))

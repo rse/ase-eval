@@ -89,7 +89,7 @@ if (opts.describe) {
     service crash-loops on its absence, so "dst/ase.js" alone proves too little)  */
 for (const file of [ "dst/ase.js", "dst/ase-task-board-web-client.html" ])
     if (!fs.existsSync(path.join(repoRoot, "tool", file))) {
-        console.error(chalk.red(`tool is not fully built ("tool/${file}" missing) -- run: cd tool && npm start build`))
+        console.error(chalk.red(`tool is not fully built ("tool/${file}" missing) -- run: cd ../tool && npm start build`))
         process.exit(2)
     }
 if (process.env.ANTHROPIC_API_KEY === undefined

@@ -1,154 +1,194 @@
 
-ASE Skill Test Harness: Architecture at a Glance
-================================================
+ASE Skill Test Harness: Architecture
+====================================
 
-A visual quick overview of the skill test harness: how the tests are
-executed, how the harness is built, and how to add a new test. For the
-details, see `TECH_OVERVIEW.md` (execution and touchpoints) and
-`TESTS.md` (usage and the full case contract).
+How the harness is built and how it executes a test, as diagrams, plus
+which parts are framework and where the harness touches **ASE**. For
+the case format and all defaults, see `TESTS.md`; for adding a test,
+see `README.md`.
 
-## 1. How the Tests Are Executed
-
-### Launch Chain
+## 1. Overall Architecture
 
 ```mermaid
 flowchart LR
-    A["npm start test (repo root)"] --> B["stx: etc/stx.conf"]
-    B --> C["npm start test (test/)"]
-    C --> D["stx: test/etc/stx.conf"]
-    D --> E["node --import tsx src/ase-test.ts"]
-    S["run_all_tests.sh / run_all_tests_local.sh"] --> E
-```
-
-All roads end in one program, `src/ase-test.ts`. *stx* is the task
-runner of the repository: `npm start <target>` runs the named target of
-the local `etc/stx.conf`, and both `test` targets merely forward. The
-two scripts call the final command directly, as *stx* treats bare case
-names and detached option values as target names (with `npm start`,
-write `--cases=<glob>` and `--jobs=8`; see `TESTS.md`). `--import tsx`
-runs the TypeScript source directly, so the harness needs no build step.
-
-### One Test Run
-
-```mermaid
-flowchart LR
-    C["Cases"] --> P["Run pool (parallel)"]
-    P --> S1["Sandbox"] --> S2["Claude session"] --> S3["Oracles"] --> S4["Teardown"]
-    S4 --> R["Report"]
-```
-
--   **Cases**: every `cases/**/case.yaml` is loaded and validated
-    up front, so broken cases fail before any money is spent.
--   **Run pool**: every case runs `runs` times, several runs in
-    parallel, each in its own throwaway **sandbox** (private HOME,
-    project directory, task store, and Git repository).
--   **Claude session**: a real, headless Claude Code session invokes the
-    skill; for interactive skills, a simulator plays the user.
--   **Oracles** check the outcome (output, files, task plans, program
-    behavior, LLM judgment); then the sandbox is torn down.
--   **Report**: a case passes when at least `minPass` of its runs pass
-    (pass@k). All transcripts and a `summary.json` land in
-    `results/<timestamp>/`, and the exit code is `0` (all passed), `1`
-    (a case failed), or `2` (infrastructure error or cost ceiling hit).
-
-## 2. Overall Architecture
-
-```mermaid
-flowchart LR
-    SIM["Harness: user simulator"] -->|answers| RUN["Harness: runner"]
-    RUN -->|starts session| SDK["Framework: Claude Agent SDK"]
-    SDK --> API["Framework: model API"]
+    RUN["Harness: runner<br/>src/ase-test.ts"] -->|starts session| SDK["Framework: Claude Agent SDK"]
+    SIM["Harness: user simulator"] -->|answers| RUN
+    SDK --> API["Model API<br/>(Anthropic or gateway)"]
     SDK -->|loads| PL["ASE: plugin/"]
-    PL -->|starts| TL["ASE: tool/"]
+    PL -->|MCP: ase mcp| TL["ASE: built tool/<br/>(tool/bin on PATH)"]
     PL -->|skills write| SB["Sandbox project"]
     O["Harness: oracles"] -->|inspect| SB
+    O -->|LLM judges| API
+    SIM -->|LLM simulator| API
 ```
 
--   **Harness** (`test/src/`): the *runner* loads the cases, schedules
-    the runs, and drives the sessions; the *user simulator* answers for
-    interactive skills; the *oracles* evaluate the outcome (the LLM
-    judges among them also call the model API).
+-   **Harness** (`src/`): loads the cases, schedules the runs, drives
+    the sessions, simulates the user of interactive skills, and
+    evaluates the outcome.
 -   **Framework**: the *Claude Agent SDK* ships its own Claude Code
-    runtime and does the actual agent work; the models answer through
-    the Anthropic API or an Anthropic-compatible gateway (e.g. a local
-    model behind LiteLLM). The LLM judges and the LLM simulator use the
-    same API.
+    runtime and does the agent work against the Anthropic API or an
+    Anthropic-compatible gateway.
 -   **ASE under test**: the session loads `plugin/` straight from the
-    working copy, and the plugin starts the *built* `tool/` (the `ase`
-    MCP server and service). Skills write into the sandbox project,
-    where the oracles inspect the results.
--   The harness never imports ASE code: it is coupled only through the
-    plugin directory, the `ase` CLI, the task file format, and the
-    wording of the skill output. The last two are invisible to the
-    build, so ASE changes there can break tests silently (see
-    `TECH_OVERVIEW.md`).
+    surrounding ASE working copy, and the plugin starts the *built*
+    `tool/` (the `ase` MCP server and service).
 
 > **Notice:** after changing `tool/src/`, rebuild the tool
-> (`cd tool && npm start build`), else the tests run stale code.
+> (`cd ../tool && npm start build`), else the tests run stale code.
 
-## 3. How and Where to Add a Test
+## 2. Launch Chain
 
-Every test case is one directory below `test/cases/`:
-
-```
-test/cases/<group>/<name>/
-├── case.yaml          # required: skill, arguments, fixture, oracles
-├── fixture/           # optional: seeded task plans and file tree
-├── answers.yaml       # optional: scripted user answers
-├── persona.md         # optional: persona of the LLM-simulated user
-├── rubric.md          # optional: criteria for the "rubric" judge
-├── expected-*.md      # optional: golden output for the "similar" judge
-├── oracle.py          # optional: reference program for the "exec" oracle
-└── suite/             # optional: hidden Python test suite for the "suite" oracle
+```mermaid
+flowchart LR
+    N["npm start test -- ..."] --> X["stx: etc/stx.conf"] --> E["node --import tsx src/ase-test.ts"]
+    S["run_all_tests.sh<br/>run_all_tests_local.sh"] --> E
 ```
 
-Pick the oracles by what the skill produces:
+*stx* is the task runner (`npm start <target>` runs a target of
+`etc/stx.conf`); it eats bare words and detached option values, so use
+`--cases=<glob>` (see `TESTS.md`). `--import tsx` transpiles the
+TypeScript on import, so the harness has no build step (`tsc` only
+type-checks it in `npm start lint`).
+
+## 3. One Invocation
+
+```mermaid
+flowchart TD
+    A["Load and validate all cases/**/case.yaml<br/>(schema, files, regexes, scripts, review leak check)"] --> B["Filter by globs; --list / --describe exit here"]
+    B --> C["Preflight: gateway profile, built tool,<br/>credentials, python3 for suite"]
+    C --> D["Run pool: every case x run,<br/>--jobs in parallel"]
+    D --> E["Per case: pass@k (minPass)"]
+    E --> F["Console summary + summary.json"]
+    F --> G{"Exit code"}
+    G -->|"ceiling hit"| X2["2"]
+    G -->|"else: a case failed"| X1["1"]
+    G -->|"else: error or skipped run"| X3["2"]
+    G -->|"else"| X0["0"]
+```
+
+### Scheduling, Retry, and Ceiling
+
+```mermaid
+flowchart TD
+    W["Worker takes next run"] --> AB{"Ceiling hit?"}
+    AB -->|yes| SK["Mark skipped"]
+    AB -->|no| AT["Attempt 1"]
+    AT --> IN{"Infrastructure error?<br/>(crash without skill output,<br/>or the attempt threw)"}
+    IN -->|no| DONE["Report run"]
+    IN -->|yes| CE{"Ceiling hit?"}
+    CE -->|yes| DONE
+    CE -->|no| AT2["Attempt 2 into run-n-retry/<br/>(costs of both summed)"] --> DONE
+    DONE --> BK["Book cost: measured,<br/>or full budget if inaccurate"]
+    BK --> CH{"Total above --max-cost-usd?"}
+    CH -->|yes| STOP["Stop scheduling"]
+    CH -->|no| W
+```
+
+A timeout is never retried, as it is the most expensive failure mode.
+
+## 4. One Run (Attempt)
+
+```mermaid
+flowchart TD
+    T["Open transcript dir"] --> SB["Create sandbox:<br/>HOME, env, fixture, Git commits"]
+    SB --> ST["Next stage (a single-skill case has one)"]
+    ST --> SE["Session: /ase:skill args<br/>(stage args may use earlier last messages)"]
+    SE --> DG["Staged only: diagnostic stage oracles"]
+    DG --> ER{"Stage errored?"}
+    ER -->|"no, more stages"| ST
+    ER -->|"yes or last stage"| CL{"Classify"}
+    CL -->|"crash, no output, no timeout"| IE["error (retryable)"]
+    CL -->|"staged and errored"| SF["fail, top-level oracles skipped"]
+    CL -->|"else"| EV["Changeset diff, top-level oracles<br/>(hidden suite copied in only now),<br/>budget check"]
+    EV --> PF["pass if every non-diagnostic oracle passed"]
+    IE --> FN
+    SF --> FN
+    PF --> FN["Write artifacts and result.json"]
+    FN --> TD["Teardown: ase service stop,<br/>remove sandbox unless -k/-K"]
+```
+
+### Multi-Turn Session
+
+A case with `turns` runs a multi-turn session with streaming input; a
+case without runs single-shot (`AskUserQuestion` disallowed).
+
+```mermaid
+sequenceDiagram
+    participant H as Harness
+    participant S as Claude Agent SDK
+    participant U as Simulator
+    H->>S: query() with the first user turn (skill invocation)
+    loop until end, error, timeout, or maxTurns
+        S->>H: canUseTool(AskUserQuestion)
+        H->>U: answers(questions)
+        U-->>H: answers
+        H-->>S: allow, answers injected
+        S->>H: result message (end of agentic turn)
+        H->>U: nextTurn(dialog)
+        U-->>H: next user message, or end
+        H->>S: next user turn (or close the input)
+    end
+```
+
+### Staged Case
+
+```mermaid
+sequenceDiagram
+    participant H as Harness
+    participant B as Sandbox (shared)
+    H->>B: create once (fixture)
+    loop each stage
+        H->>B: session of stage N (own transcript stage-N-*)
+        H->>B: diagnostic oracles of stage N (never decide)
+    end
+    H->>B: changeset diff
+    H->>B: copy hidden suite in, run top-level oracles (decide)
+    H->>B: teardown
+```
+
+## 5. Choosing Oracles
 
 ```mermaid
 flowchart TD
     Q["What does the skill produce?"]
-    Q --> T["Text output"] --> T1["regex, rubric, similar"]
+    Q --> T["Text output"] --> T1["notErrored, verdict, regex, textMetric;<br/>rubric, similar (LLM judges)"]
     Q --> F["Files or code"] --> F1["fileExists, gitDiff, exec, suite"]
     Q --> P["Task plans"] --> P1["taskStore, similar (taskBody)"]
-    Q --> I["Asks the user questions"] --> I1["add turns: scripted or llm"]
+    Q --> I["Asks the user questions"] --> I1["turns: scripted or llm simulator"]
     Q --> S["A flow of several skills"] --> S1["stages, with diagnostic oracles per stage"]
     Q --> R["A code review of a seeded change"] --> R1["review (cases/review/)"]
 ```
 
-A *staged* case chains several skills, each in its own session, but all
-in the same sandbox: the top-level oracles alone decide the verdict
-(e.g. a hidden `suite`, copied into the project only after the last
-stage), while the oracles of each stage only explain *where* a failed
-run went wrong.
-
-Prefer the mechanical oracles (`regex`, `fileExists`, `gitDiff`,
-`taskStore`, `exec`): they are free and deterministic. Use the LLM
-judges (`rubric`, `similar`) only where the quality of free text
+Prefer the mechanical oracles: they are free and deterministic. Use the
+LLM judges (`rubric`, `similar`) only where the quality of free text
 matters.
 
-Steps:
+## 6. Framework vs. Harness
 
-1.  Create the directory, e.g. `test/cases/meta/mint-uuid/`.
-2.  Write the `case.yaml`, e.g.:
+| Layer                                               | Role                                                                                         | Owner                  |
+|-----------------------------------------------------|----------------------------------------------------------------------------------------------|------------------------|
+| Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`) | runs the sessions (own Claude Code runtime, plugins, hooks, MCP, permissions, cost), and the judge and simulator completions without an API key (OAuth) | Anthropic (dependency) |
+| Anthropic SDK (`@anthropic-ai/sdk`)                 | direct judge and simulator completions with an API key                                       | Anthropic (dependency) |
+| `src/*.ts`                                          | discovery, sandboxes, session driver, simulators, oracles, judges, reporting                 | Harness                |
+| `src/review/`                                       | scorer and standalone tools of the review benchmark (plain Node.js `.mjs`)                   | Harness                |
+| `cases/`                                            | inputs, fixtures, and expected outputs                                                       | Test data              |
 
-    ```yaml
-    skill: ase-meta-mint
-    args: "uuid test harness fixture"
-    budget: { maxUsd: 1.00 }
-    oracles:
-      - notErrored: true
-      - regex:
-          in: output
-          match: "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
-    ```
+## 7. Touchpoints with ASE
 
-3.  Check the case for free (no session is started):
-    `npm start test -- --describe --cases=meta/mint-uuid`.
-4.  Run it, keeping the sandbox of a failed run for inspection:
-    `npm start test -- -K --cases=meta/mint-uuid`.
-5.  For non-deterministic skills, raise `runs` and set `minPass`
-    (e.g. `runs: 3`, `minPass: 2`).
+The harness never imports ASE code; it drives ASE as a black box.
 
-The defaults of all keys and the exact oracle semantics are listed in
-the "Contract" section of `TESTS.md`; the existing cases are the best
-templates.
+| Touchpoint                                    | How                                                                                     | Consequence                                                                 |
+|-----------------------------------------------|-----------------------------------------------------------------------------------------|-----------------------------------------------------------------------------|
+| location                                      | the harness resolves ASE as its parent directory                                        | it must be checked out *directly* inside ASE                                |
+| `plugin/`                                     | loaded from the working copy as a local plugin                                          | skill, sub-agent, meta file, and hook changes are tested without `ase setup` |
+| `tool/bin/ase`, `tool/dst/`                   | `tool/bin` on the sandbox `PATH`; the plugin starts `ase mcp`, which spawns `ase service` | the *built* tool is tested: rebuild after changing `tool/src/`             |
+| `ase service stop`                            | called on teardown                                                                      | stops the background service of the sandbox                                 |
+| `.ase/config.yaml`                            | written from `fixture.config`                                                           | coupled to the ASE configuration keys                                       |
+| `.ase/task/TASK-*.md`, `PROJECT.yaml`         | fixtures in the task file format; `taskStore` and `taskBody` parse it back              | coupled to the *format* of `tool/src/ase-task-format.ts`, not to its code   |
+| skill output conventions (`▶ ERROR:`, verdict words, ...) | matched by the oracles and the infrastructure error classification          | coupled to `plugin/meta/ase-skill.md` and the `SKILL.md` templates          |
+| `ase-repo-review` output                      | the verdict and findings table, parsed by the `review` oracle                           | coupled to the output format of that skill                                  |
+| `skillErrored`, `verdictOf`, `changesetDiff`, `skillPrompt`, `brief` | copied into `src/ase-test-{oracle,session,transcript}.ts`, with comments naming the originals in `tool/src/ase-agent-runtime-*.ts` | copies drift silently when the originals change |
+
+> **Notice:** the task file format, the skill output wording, and the
+> copied helpers are invisible to the build: an ASE change there breaks
+> tests without any compile error. Check them first when tests fail
+> after an ASE change which "should not" affect them.

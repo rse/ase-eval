@@ -6,6 +6,10 @@ instead of the Anthropic API. Claude Code speaks the Anthropic Messages API to a
 Completions API and forwards it to **`mlx_lm.server`** on the Mac host, which serves
 Qwen3.6-35B-A3B (MLX, 4-bit).
 
+> **Notice:** this is one example setup. The generic gateway rules of the
+> harness (profile format, model aliasing, caveats) are in `TESTS.md`
+> ("Third-Party Gateways").
+
 ## Communication
 
 ```mermaid
@@ -131,7 +135,7 @@ proxy_handler_instance = MergeSystem()
 }
 ```
 
-### 5. ASE tests: `test/etc/llm-local.env` (git-ignored; template: `etc/llm-local.env.sample`)
+### 5. ASE tests: `etc/llm-local.env` (git-ignored; template: `etc/llm-local.env.sample`)
 
 ```sh
 ANTHROPIC_BASE_URL=http://127.0.0.1:4000
@@ -156,11 +160,11 @@ curl -s http://127.0.0.1:4000/health/liveliness  # LiteLLM up?
 claude
 
 # ASE skill test harness (all cases)
-cd ~/ase/test && ./run_all_tests_local.sh
+cd ~/ase/ase-eval && ./run_all_tests_local.sh
 
 # ASE "ase agent" end-to-end test
-cd ~/ase/test && ./run_agent_test_local.sh --dry-run            # check the setup only
-cd ~/ase/test && ./run_agent_test_local.sh --timeout 2h
+cd ~/ase/ase-eval && ./run_agent_test_local.sh --dry-run            # check the setup only
+cd ~/ase/ase-eval && ./run_agent_test_local.sh --timeout 2h
 ```
 
 ## Gotchas
@@ -176,5 +180,5 @@ cd ~/ase/test && ./run_agent_test_local.sh --timeout 2h
   `run_agent_test_local.sh` also pins every model alias to `default_model`.
 - `ASE_TEST_JOBS=1`: a single local model handles concurrent generation poorly.
 - Reported costs are meaningless. Runs are slow, so raise `--timeout`.
-- `write EPIPE` crash at start-up: fixed in commit `8c02f687`. Fast-exiting child
+- `write EPIPE` crash at start-up: fixed in ASE commit `8c02f687`. Fast-exiting child
   processes such as `git --version` closed stdin before the test wrote to it.

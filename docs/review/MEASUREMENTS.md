@@ -14,7 +14,8 @@ corrections and re-scorings are added as dated notes or as new entries.
 Note (2026-11-16): the benchmark moved from `benchmark/repo-review/` into the
 skill harness; entries before this date name the former paths, where
 `cases/<name>/` is now `cases/review/<name>/` and the results of a case are in
-`results/review/<name>/`.
+`results/review/<name>/`. Commit hashes in the entries (such as `13014184` or
+`5aeeeb47`) refer to the ASE repository, where the benchmark lived before.
 
 ## Overview
 

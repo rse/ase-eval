@@ -1,281 +1,242 @@
 
-ASE Suit for Evaluation: Usage and Contract
-==========================================
+ASE Skill Test Harness: Reference
+=================================
 
-The full reference of the harness: usage, third-party gateways, the
-case format and its contract, and the sandboxing. For a quick start,
-see `README.md`.
+The full reference of the harness: CLI, gateways, the case format and
+its contract, sandboxing, and artifacts. For a quick start, see
+`README.md`; for the diagrams of the program flow, see `ARCHITECTURE.md`.
 
-## About
+## CLI
 
-This directory holds the skill test harness of **ASE** (not shipped
-with the deliverables): it runs the skills of `plugin/` headless through
-the *Claude Agent SDK* with the working-copy `plugin/` loaded and the
-built `tool/` on the `PATH`, each run in a throwaway sandbox, and judges
-the outcome with mechanical oracles and an optional LLM rubric judge.
+`node --import tsx src/ase-test.ts [options] [globs...]`, also reached
+via `npm start test -- <options>` and the `run_*.sh` scripts.
 
-The harness is an *eval* suite, not a unit test suite: a skill is a
-natural-language program executed by an LLM, so non-deterministic cases
-declare multiple runs with a pass@k threshold, while the deterministic
-parts (argument parsing, error templates, tool effects) are asserted
-exactly. Every case run executes real agent sessions against the
-Anthropic API and hence *burns AI tokens* -- this is why no `build` or
-`publish` target ever triggers it.
+| Option                   | Meaning                                                              |
+|--------------------------|----------------------------------------------------------------------|
+| `[globs...]`, `-c, --cases <glob...>` | case name globs, e.g. `task/*` (default: all cases)     |
+| `-j, --jobs <n>`         | parallel runs (default: `$ASE_TEST_JOBS`, else `4`)                  |
+| `-l, --list`             | list the discovered cases and exit (free)                            |
+| `-d, --describe`         | show input, fixture, simulator, and oracles of the cases (free)      |
+| `-k, --keep`             | keep the sandboxes of all runs                                       |
+| `-K, --keep-failed`      | keep the sandboxes of failed runs                                    |
+| `-m, --max-cost-usd <n>` | global cost ceiling in USD (default: `20`)                           |
+| `-r, --results <dir>`    | results directory (default: `results/<timestamp>`)                   |
+| `--llm <file>`           | gateway profile (default: `$ASE_TEST_LLM`)                           |
 
-See `ARCHITECTURE.md` for a visual quick overview (execution,
-architecture, and adding a test), and `TECH_OVERVIEW.md` for how the
-tests are executed, which parts are framework and which harness code,
-and where the harness touches ASE. `EXAMPLE_RUNS.md` shows example runs
-of the whole test suit on the anthropic models and local models. 
+`run_all_tests.sh` additionally takes `--force-model <model>`, which
+forces the session, sub-agent, judge, and simulator models onto one
+model (via `ASE_TEST_FORCE_MODEL`, `ASE_TEST_MODEL`,
+`ASE_TEST_JUDGE_MODEL`, `ASE_TEST_SIM_MODEL`, and the `ANTHROPIC_*MODEL`
+variables). `run_all_tests_local.sh` does not take it, so combine both
+via `./run_all_tests.sh --force-model <model> --llm=<profile>`.
 
-## Layout
+Further `etc/stx.conf` targets: `lint`, `test-agent` (the `ase agent`
+end-to-end tests, see `agent/README.md`), `review-selftest` and
+`review-check-language` (the free self-checks of the review benchmark,
+see `docs/review/README.md`), `clean`, and `distclean`.
 
--   `src/ase-test.ts`: the harness CLI (case discovery, run pool, pass@k
-    aggregation, global cost ceiling, exit codes), with
-    `ase-test-{case,sandbox,session,llm,simulator,transcript,oracle,judge,report}.ts`
-    for the case schema, the per-run sandbox, the Agent SDK session
-    runner (single-shot and multi-turn), the tool-less LLM completion
-    helper, the scripted resp. LLM-driven user simulator, the per-run
-    artifact recorder, the oracle library (skill errors, verdicts,
-    regex, files, Git changeset diff, task store, text metrics), the
-    LLM rubric judge, and the reporting
--   `cases/<group>/<name>/`: one directory per test case, with a
-    `case.yaml` (skill, arguments, runs, budget, fixture, turns, and
-    oracles) plus optional fixture files, simulator scripts
-    (`answers.yaml`), personas, and rubrics
--   `results/<timestamp>/`: the per-run artifacts (raw
-    `transcript.jsonl`, decoded `transcript.md`, `diff.patch`, the final
-    added or modified project files under `files/`, the complete
-    `unittest` output of a `suite` oracle as `suite.log`, task store
-    copy, `result.json`) and the `summary.json`, never committed
+> **Notice:** *stx* treats every bare word after the target name as
+> another target name, so with `npm start test` case globs and detached
+> option values get lost (`-c 'meta/*'` fails). Use the `=` form
+> (`--cases='meta/*'`, `--jobs=8`) or call `node --import tsx
+> src/ase-test.ts` (or the run scripts) directly.
 
-## Prerequisites
+## Exit Codes
 
--   a fully built `tool/` (`cd tool && npm start build`), as the
-    sandboxed sessions run the `ase` MCP service from `tool/bin`
--   agent tool credentials: `ANTHROPIC_API_KEY` or
-    `CLAUDE_CODE_OAUTH_TOKEN`, or a `~/.claude/.credentials.json` from a
-    regular login (it is copied into the sandbox HOME)
-
-## Usage
-
-```
-npm start lint                            # eslint + tsc over src/
-npm start test                            # run all cases
-npm start test -- --cases='task/*'        # run the cases matching a glob
-npm start test -- -l                      # list the discovered cases
-npm start test -- -d --cases='task/grill-*'  # describe the matched cases
-npm start test -- --jobs=8 --max-cost-usd=10  # 8 parallel runs, $10 ceiling
-npm start test -- -K --cases='meta/*'     # keep the sandboxes of failed runs
-./run_all_tests.sh                        # run all cases, after a cost confirmation
-./run_all_tests_local.sh [<profile>]      # run all cases against a local model gateway
-```
-
-Exit codes: `0` all cases passed, `1` a case failed its pass@k
-threshold, `2` infrastructure error or cost ceiling hit.
-
-> **Notice:** stx treats every bare word after the task name as another
-> task name, so with `npm start` case globs and detached option values
-> get lost (`-c 'meta/*'` fails with "argument missing"). Inside `test/`,
-> use the `=` form (`--cases='meta/*'`, `--jobs=8`), the stx `+` prefix
-> (`npm start test -- +meta/mint-uuid`), or the stx single-task mode
-> (`npm start -- -s test -c 'meta/*' --jobs 8`). From the repository
-> root, two stx layers are involved: only the `=` form and a doubled
-> `++` prefix survive, while a single `+` or `-s` *silently* drops the
-> case filter and selects *all* cases. Invoking
-> `node --import tsx src/ase-test.ts` (or the run scripts) directly has
-> no such restriction.
+| Code | Meaning                                                                                   |
+|------|-------------------------------------------------------------------------------------------|
+| `0`  | all cases passed                                                                          |
+| `1`  | a case failed its pass@k threshold, or no case matched the globs                          |
+| `2`  | cost ceiling hit (wins over `1`), an infrastructure error or skipped run, or a preflight error (missing profile, unbuilt tool, no credentials, no `python3` for a `suite` oracle, invalid `--jobs`/`--max-cost-usd`) |
 
 ## Third-Party Gateways
 
-By default the sessions run against the Anthropic API with the
-credentials above. Alternatively the whole harness (sessions, rubric
-judge, user simulator) can be routed to any Anthropic-compatible
-gateway -- e.g. a [LiteLLM](https://docs.litellm.ai) proxy in front of a
-locally served model -- via an env-file profile:
+The whole harness (sessions, judges, simulator) can be routed to any
+Anthropic-compatible gateway, e.g. a [LiteLLM](https://docs.litellm.ai)
+proxy in front of a locally served model, via an env-file profile:
 
 ```
 npm start test -- --llm=etc/llm-local.env --cases=meta/mint-uuid
 ```
 
-See `etc/llm-local.env.sample` for the profile format: it sets
-`ANTHROPIC_BASE_URL` and `ANTHROPIC_API_KEY` (and optionally
-`CLAUDE_CODE_*` tuning for small context windows), which the harness
-loads into its process environment and passes through into the
-sandboxed sessions. Variables already exported take precedence over the
-profile, and `ASE_TEST_LLM=<file>` is honored as a default for `--llm`.
+See `etc/llm-local.env.sample` for the format. The harness loads the
+profile into its own environment (already exported variables win) and
+passes into the sandbox only `ANTHROPIC_BASE_URL`,
+`ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_MODEL`,
+`ANTHROPIC_DEFAULT_<X>_MODEL`, and the three tuning variables
+`CLAUDE_CODE_AUTO_COMPACT_WINDOW`, `CLAUDE_CODE_MAX_OUTPUT_TOKENS`, and
+`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` (plus the credential, see
+"Sandboxing"). A profile can also set `ASE_TEST_JOBS`, e.g. `1` to
+serialize the runs for a single local model.
 
-The harness intentionally does *not* remap model names: hard-coded
-defaults (`claude-haiku-5-5` for judge and simulator) and per-case
-`turns.model` declarations reach the gateway as-is, so the gateway
-should alias the `claude-*` model names onto its local model (in
-LiteLLM: several `model_name` entries pointing to the same deployment).
-Alternatively `ASE_TEST_MODEL`, `ASE_TEST_JUDGE_MODEL` and
-`ASE_TEST_SIM_MODEL` can be set in the profile. A profile can also set
-`ASE_TEST_JOBS` (the default of `--jobs`), e.g. `1` to serialize the
-runs for a single locally served model.
+Model names are not remapped: the defaults (`claude-haiku-5-5` for judge
+and simulator) and per-case `turns.model` reach the gateway as-is. So
+either alias the `claude-*` names onto the local model in the gateway
+(in LiteLLM: several `model_name` entries pointing to one deployment),
+or set `ASE_TEST_MODEL`, `ASE_TEST_JUDGE_MODEL`, and `ASE_TEST_SIM_MODEL`
+in the profile (`ASE_TEST_FORCE_MODEL` even overrides `turns.model`).
 
-Caveats in gateway mode:
-
--   a full suite run against a locally served model can take more than
-    an hour, as local generation is far slower and the runs are usually
-    serialized (`ASE_TEST_JOBS=1`)
-
--   cost accounting (`total_cost_usd`) is meaningless for models
-    unknown to the agent tool, so the per-case `budget.maxUsd`, the
-    global `--max-cost-usd` ceiling, and the reported costs are
-    unreliable
--   rubric/`similar` judging by a small local model is markedly weaker
-    than by the default judge -- consider pointing
-    `ASE_TEST_JUDGE_MODEL` at a stronger model
--   the startup line prints the active `endpoint:` so a run visibly
-    states which backend it used
+Caveats: a full local run can take more than an hour; the reported
+costs (and with them `budget.maxUsd` and `--max-cost-usd`) are
+meaningless for models unknown to the agent tool; a small local judge
+is markedly weaker (consider a stronger `ASE_TEST_JUDGE_MODEL`). The
+startup line prints the active `endpoint:`. `LOCAL_SETUP.md` shows one
+complete example setup.
 
 ## Cases
 
-A case is a directory `cases/<group>/<name>/` with a `case.yaml`
-declaring the skill and arguments (or, via `promptFile`, a file holding
-a free-text prompt), the number of runs and the pass@k threshold
-(`runs`/`minPass`), the per-run budget, the fixture (Git repository,
-ASE configuration, seeded task store, file tree), the optional
-interactive turns (a scripted `answers.yaml` or an LLM-driven persona),
-and the oracles (`notErrored`, `verdict`, `regex`, `fileExists`,
-`gitDiff`, `taskStore`, `textMetric`, `exec`, `suite`, `rubric`,
-`similar`, and `review`). Instead of a single skill, a case can declare `stages`: a
-list of skill invocations run one after the other, each in its own
-session, but all in the *same* sandbox (e.g. brainstorm, plan, grill,
-and implement), see `cases/flow/brainstorm-grill-implement/`.
-The `exec` oracle compares behavior instead of text: a command run in
-the sandbox project (e.g. a generated program) must produce the same
-stdout as a case-local `reference` command (the "oracle code", run in
-the case directory) for every declared stdin vector. The `similar`
-oracle checks against a golden expected output: a separate file in the
-case directory states the decisions, facts, and constraints the result
-must carry, and an LLM judge scores the semantic similarity of the
-actual result (the skill output, the dialog, or the final task plan
-body via `in: taskBody`) against it, ignoring wording, structure, and
-ordering. The `suite` oracle runs a *hidden* Python unit-test suite: the
-case-local directory `dir` is copied into the sandbox project only after
-the last session (and after the changeset diff was taken), so the skills
-never see the tests, and is run there via `python3 -m unittest discover
--s <dir> -v`, passing only if every discovered test ran and passed.
-The `review` oracle scores an `ase-repo-review` output deterministically
-against the expected-results list (`expected`) and the thresholds
-(`thresholds`) of a review benchmark case, through the scorer of
-`src/review/lib/` (see `docs/review/README.md`). The review cases live
-in `cases/review/<name>/` and are discovered as `review/<name>`;
-their fixture adds a change commit (`fixture.change`) on top of the base
-commit, and their `disallowedTools` keep the review read-only.
-See the existing cases for the shapes, and
-`src/ase-test-case.ts` for the authoritative schema.
+A case is a directory `cases/<group>/<name>/` with a `case.yaml`; it is
+discovered as `<group>/<name>`. All file references are relative to the
+case directory and must stay inside it. Unknown keys are errors, and
+every case is validated (including its regular expressions and
+simulator scripts) before any session starts. `src/ase-test-case.ts`
+holds the authoritative schema.
 
-To see the exact input (the first user turn, the fixture, and the
-simulator) and the expected output (the oracles in prose, with the
-golden/rubric files inlined) of a case, run `npm start test -- --describe`
-(optionally with `--cases=<glob>`) -- it is free, as no session is started.
+| Key               | Meaning                                                                                       |
+|-------------------|-----------------------------------------------------------------------------------------------|
+| `skill`, `args`   | the skill invoked as `/ase:<skill> <args>`                                                     |
+| `promptFile`      | instead of `skill`: a file holding a free-text prompt                                          |
+| `stages`          | instead of `skill`: a list of skill invocations (see "Staged Cases")                           |
+| `runs`, `minPass` | number of runs and the pass@k threshold                                                        |
+| `timeoutSec`, `budget.maxUsd` | wall-clock limit and cost budget of one run                                        |
+| `fixture`         | `git` (init and commit the project), `config` (written to `.ase/config.yaml`), `tasks` (task plan files seeded into `.ase/task/`), `lifecycle` (of the seeded store), `files` (a file tree copied into the project), `change` (see below) |
+| `turns`           | interactive session: `simulator` (`scripted` with `script`, or `llm` with `persona`), `model`, `maxTurns` |
+| `disallowedTools` | tools the session must not use, e.g. `[ Edit, Write ]`                                         |
+| `oracles`         | the checks deciding the verdict (at least one)                                                 |
 
-### Contract
+`fixture.change` (`files`, `delete`, `message`; requires `fixture.git`)
+adds a second commit on top of the base commit: the tree `files`
+overlaid onto the project, the paths listed in the file `delete`
+removed, committed with `message`. Both commits get neutral messages and
+fixed dates; the change commit is the baseline of the `gitDiff` oracle.
 
-The defaults of an omitted `case.yaml` key:
+## Oracles
 
-| Key                                       | Default            | Note                                          |
-|-------------------------------------------|--------------------|-----------------------------------------------|
-| `runs`                                    | `1`                |                                               |
-| `minPass`                                 | `runs`             | i.e., by default *all* runs must pass         |
-| `timeoutSec`                              | `300`              | wall-clock limit of one session               |
-| `budget.maxUsd`                           | `2.00`             | per run, see the budget layers below          |
-| `turns.maxTurns`                          | `16`               | *user* turns (the agentic turn cap is 4×)     |
-| `turns.model`                             | `claude-haiku-5-5` | resp. `$ASE_TEST_SIM_MODEL`                   |
-| `in` (`regex`, `textMetric`, `similar`)   | `lastMessage`      |                                               |
-| `review.in`                               | `lastMessage`      | resp. `output`                                |
-| `disallowedTools`                         | `[]`               | per case resp. stage, e.g. `[ Edit, Write ]`  |
-| `regex.flags`                             | `m`                | a JavaScript regex: no inline `(?i)`          |
-| `threshold`/`votes` (`rubric`, `similar`) | `0.7`/`3`          | judge model resp. `$ASE_TEST_JUDGE_MODEL`     |
-| `exec.timeoutSec`                         | `10`               | per command execution                         |
-| `suite.timeoutSec`                        | `120`              | for the whole test suite run                  |
-| `stages[].timeoutSec`                     | `300`              | per stage, a staged case sums them up         |
-| `stages[].budget.maxUsd`                  | `2.00`             | per stage, a staged case sums them up         |
+| Oracle       | Fields                                                     | Passes when                                                                 |
+|--------------|------------------------------------------------------------|-----------------------------------------------------------------------------|
+| `notErrored` | `true`                                                     | the session succeeded and the skill printed no `▶ ERROR:` line             |
+| `verdict`    | `label`, `expect`                                          | the last verdict word after `label` equals `expect`                        |
+| `regex`      | `in`, `file`, `flags`, `match`, `not`                      | all `match` patterns match and no `not` pattern matches the target          |
+| `fileExists` | path or list of paths                                      | all files exist in the project                                              |
+| `gitDiff`    | `empty`, `changed`, `unchanged`, `mustMatch`, `mustNotMatch` | the changeset diff against the fixture commit satisfies all fields        |
+| `taskStore`  | `id`, `exists`, `status`, `titleMatch`, `bodyMatch`, `count` | the task store (`.ase/task/`) satisfies all fields                        |
+| `textMetric` | `in`, `file`, `min`/`maxChars`, `min`/`maxWords`           | the target's length is within the bounds                                    |
+| `exec`       | `command`, `reference`, `stdin`, `timeoutSec`              | `command` (in the project) prints the same stdout as `reference` (in the case directory) for every `stdin` vector, trailing whitespace ignored |
+| `suite`      | `dir`, `timeoutSec`                                        | the hidden Python suite `dir`, copied into the project only after the last session and the diff, runs via `python3 -m unittest discover` with every test passed |
+| `rubric`     | `file`, `threshold`, `votes`                               | the majority of LLM judge votes on the output reaches `threshold`          |
+| `similar`    | `expected`, `in`, `id`, `threshold`, `votes`               | the majority of LLM judge votes on the semantic similarity of the target to the golden file reaches `threshold` |
+| `review`     | `expected`, `thresholds`, `in`                             | the `ase-repo-review` findings, scored by `src/review/lib/`, meet every threshold of this single run (see below) |
 
-The oracle targets (`in`): `lastMessage` is the last assistant text
-block, `output` all assistant text, `dialog` the user/assistant texts
-*without* tool calls (not the `transcript.md` artifact, which records
-everything), `file` a project file (with `file:`), and `taskBody` the
-body of a task plan (with `id:`, `similar` only). A missing target file
-or task fails the oracle. The `exec` oracle runs both commands with the
-sandbox environment and compares stdout with trailing whitespace
-stripped; a failing `reference` command reports a case bug.
+Targets (`in`): `lastMessage` is the last assistant text block, `output`
+all assistant text, `dialog` the user/assistant texts without tool
+calls, `file` a project file (with `file:`), `taskBody` the body of a
+task plan (with `id:`, `similar` only). A missing file or task fails the
+oracle; `review` scores an empty text instead. A judge whose votes are
+mostly unparsable reports a malfunction instead of a quality failure.
 
-The optional `fixture.change` (`files`, `delete`, `message`, requires
-`fixture.git`) creates a second commit on top of the base commit: the
-file tree `files` overlaid onto the project, the project files listed in
-the file `delete` removed, with the commit message `message`. Both
-commits get neutral messages and fixed dates, and the change commit is
-the baseline of the `gitDiff` oracle. The `review` oracle fails on an
-unparseable review, on any tool call reaching into `cases/review/`,
-`src/review/`, or the ASE repository outside `plugin/` and `tool/`
-(contamination),
-and when a threshold of the *single* run is not met; its per-run figures
-land under `metrics` in `result.json` and `summary.json`, and the review
-text in `review.log`. A case with a `review` oracle is rejected at load
-time if its fixture or change message contains a hinting term (the leak
-check of `src/review/lib/leak.mjs`). The standalone tools of the review
-benchmark (`run`, `measure`, `compare`, `check`, `prove`, `selftest`)
-live in `src/review/`, its documentation and measurement log in
-`docs/review/`, and its results go to `results/review/`.
+The `review` oracle fails on an unparseable review, on a tool call
+reaching into `cases/review/`, `src/review/`, a `solution/` folder, or
+the ASE repository outside `plugin/` and `tool/` (contamination), and on
+a missed threshold. A case with a `review` oracle is rejected at load
+time if its fixture or change message contains a hinting term. The
+review cases live in `cases/review/<name>/` (see `docs/review/README.md`).
 
-A staged case declares `stages` *instead* of `skill`/`promptFile`, and
-then carries `turns`, `timeoutSec`, and `budget` per stage instead of
-per case. Each stage is a list entry with `skill`, `args`, and the
-optional `turns`, `timeoutSec`, `budget`, and `oracles`. The `args` of
-a stage may reference `{{stage<N>.lastMessage}}`, the whole last
-assistant text block of the earlier stage `<N>` (1-based), substituted
-verbatim. The `oracles` of a stage are *diagnostic*: they are evaluated
-right after their stage and reported as `stage<N>/<kind>` (marked `◦`
-on the console), but never decide the verdict, which is decided by the
-top-level `oracles` alone (the `suite` oracle is top-level only). An
-errored or crashed stage skips all remaining stages and fails the run
-with `stage <N> (<skill>) errored: ...`, without evaluating the
-top-level oracles. A staged run records each stage into its own
-`stage-<N>-transcript.{md,jsonl}` and `stage-<N>-stderr.log`, and its
-`result.json` additionally carries the per-stage results under
-`stages`. While running, a staged run reports the start (`▸`) and the
-end (`▪`, with duration, cost, and failed diagnostics) of each stage
-live on the console.
+## Contract
 
-The LLM judges cast `votes` independent votes, each scoring 0.0 to 1.0,
-and pass when the majority reaches the `threshold`; when the majority
-of the votes is unparsable, the oracle reports a malfunctioning judge
-instead of a quality failure.
+| Key                                       | Default            | Note                                                          |
+|-------------------------------------------|--------------------|---------------------------------------------------------------|
+| `runs`                                    | `1`                |                                                               |
+| `minPass`                                 | `runs`             | i.e., by default *all* runs must pass                         |
+| `timeoutSec`                              | `300`              | wall-clock limit of one session                               |
+| `budget.maxUsd`                           | `2.00`             | per run, see "Budget and Retries"                             |
+| `fixture.lifecycle`                       | `solo`             | lifecycle of the seeded task store                            |
+| `turns.maxTurns`                          | `16`               | *user* turns; the agentic turn cap is 4×, resp. 32 single-shot |
+| `turns.model`                             | `claude-haiku-5-5` | `llm` simulator only; precedence: `$ASE_TEST_FORCE_MODEL`, `turns.model`, `$ASE_TEST_SIM_MODEL`, default |
+| `in` (`regex`, `textMetric`, `similar`, `review`) | `lastMessage` |                                                        |
+| `disallowedTools`                         | `[]`               | a single-shot session also always disallows `AskUserQuestion` |
+| `regex.flags`                             | `m`                | a JavaScript regex: no inline `(?i)`                          |
+| `threshold`/`votes` (`rubric`, `similar`) | `0.7`/`3`          | judge model `$ASE_TEST_JUDGE_MODEL`, else `claude-haiku-5-5`  |
+| `exec.timeoutSec`                         | `10`               | per command execution                                         |
+| `suite.timeoutSec`                        | `120`              | for the whole suite run                                       |
+| `stages[].timeoutSec`                     | `300`              | per stage, a staged case sums them up                         |
+| `stages[].budget.maxUsd`                  | `2.00`             | per stage, a staged case sums them up                         |
 
-The scripted simulator matches its `rules` against a question plus its
-option labels (for an `AskUserQuestion` call) resp. against the last
-assistant message (for a free-text turn); unmatched questions take the
-`default`, else the first option, else `proceed`, and a free-text turn
-matching `end:` (or lacking a `default`) ends the session. The LLM
-simulator ends the session by replying `<<END>>`. Every other
-permission request of the session is allowed.
+### Staged Cases
 
-The money is guarded in three layers: the agent tool aborts a session
-at `budget.maxUsd` itself, a run exceeding `budget.maxUsd` fails even
-when all its oracles pass, and the global `--max-cost-usd` ceiling
-stops scheduling further runs (in-flight runs complete). A run whose
-cost is inaccurate (a timeout or crash before the final result message)
-is booked at its full budget against the ceiling, while its reported
-cost stays the measured lower bound.
+A staged case declares `stages` *instead* of `skill`/`promptFile` and
+carries `turns`, `timeoutSec`, `budget`, and `disallowedTools` per stage
+only. Each stage has `skill`, `args`, and optionally `turns`,
+`timeoutSec`, `budget`, `disallowedTools`, and `oracles`. Its `args` may
+reference `{{stage<N>.lastMessage}}` of an earlier stage. All stages run
+one after the other in the *same* sandbox, each in its own session. The
+stage oracles are *diagnostic* (reported as `stage<N>/<kind>`, marked
+`◦`), the top-level oracles alone decide the verdict, and `suite` is
+top-level only. An errored stage skips the remaining stages and fails
+the run without evaluating the top-level oracles. Example:
+`cases/flow/brainstorm-grill-implement/`.
 
-A session crashing before the skill produced any output is an
-infrastructure error and retried exactly once, into its own
-`run-<n>-retry/` artifact directory, with both attempts' costs merged
-into the reported run; a timeout is never retried, as it is the most
-expensive failure mode. The exit code is `2` for a hit ceiling, else
-`1` for a failed case, else `2` for any infrastructure error or skipped
-run, else `0`.
+### Simulators
+
+-   **Scripted** (`answers.yaml`): `rules` (`when` regex, `answer`) are
+    matched against a question plus its option labels (`AskUserQuestion`)
+    resp. against the last assistant message (free-text turn). An
+    unmatched question takes `default`, else the first option, else
+    `proceed`. A free-text turn ends the session when `end` matches or
+    when no rule matches and there is no `default`.
+-   **LLM** (`persona.md`): a model plays the user along the persona and
+    ends the session by replying `<<END>>` (or nothing).
+
+Interactive sessions allow every permission request; single-shot
+sessions use the automatic permission mode of the agent tool.
+
+### Budget and Retries
+
+-   The agent tool aborts a session at `budget.maxUsd` itself, and a run
+    exceeding it fails even when all its oracles pass.
+-   The global `--max-cost-usd` ceiling stops scheduling further runs
+    (in-flight runs complete, the rest is `skipped`). A run whose cost is
+    inaccurate (timeout or crash before the final result message) is
+    booked at its full budget against the ceiling.
+-   A run is retried exactly once, into `run-<n>-retry/`, when its
+    session crashed before the skill produced any output or the attempt
+    threw (e.g. the sandbox creation failed), and only while the ceiling
+    is not hit. A timeout is never retried. The reported cost sums both
+    attempts.
 
 ## Sandboxing
 
-Every run gets a private HOME (XDG directories, Claude settings, and
-credentials) and a private project directory with its own `.ase/`
-state, task store, and service port, so runs are parallel-safe. The
-sandbox is torn down after the run (`ase service stop` plus removal),
-unless `-k`/`-K` keeps it for inspection.
+Every run gets a private sandbox, so runs are parallel-safe:
 
+-   a private HOME with XDG directories, credentials, and a Claude
+    `settings.json` with `disableClaudeAiConnectors`
+-   a private project directory with the fixture, its own `.ase/` state,
+    task store, and service port
+-   an environment without agent tool, ASE, tmux, and Copilot state and
+    without common credential variables, plus `tool/bin` on the `PATH`,
+    `ASE_HEADLESS=true`, exactly one agent tool credential
+    (`ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`, or the copied
+    `~/.claude/.credentials.json`), and the gateway variables above
+
+The teardown runs `ase service stop` and removes the sandbox, unless
+`-k`/`-K` keeps it (its path is then written to `sandbox.txt`).
+
+## Artifacts
+
+Per run, `results/<timestamp>/<group>/<name>/run-<n>/` holds:
+
+| File                         | Content                                                         |
+|------------------------------|-----------------------------------------------------------------|
+| `transcript.jsonl`           | raw SDK messages                                                |
+| `transcript.md`              | decoded transcript (texts, tool calls, results)                 |
+| `stderr.log`                 | stderr of the agent tool                                        |
+| `diff.patch`                 | changeset diff of the project (if not empty)                    |
+| `files/`                     | final state of every added or modified project file             |
+| `taskstore/`                 | copy of `.ase/task/`                                            |
+| `suite.log`, `review.log`    | full output of a `suite` oracle, resp. the review text          |
+| `result.json`                | verdict, session data, and oracle results (with `metrics`)      |
+| `sandbox.txt`                | path of a kept sandbox                                          |
+
+A staged run prefixes the transcript and stderr files with `stage-<N>-`
+and adds the per-stage results to `result.json`. The `summary.json` of
+the invocation holds all runs plus the provenance (endpoint, models,
+plugin commit, SDK and Node.js versions). Results are never committed.

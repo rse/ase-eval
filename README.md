@@ -1,4 +1,4 @@
-ASE Suit for Evaluation (ASE)
+ASE Suite for Evaluation (ASE)
 ======================
 
 
@@ -63,7 +63,7 @@ or a regular `claude` login). Every run burns real AI tokens.
 ./run_all_tests.sh                                # all cases, after a cost confirmation
 ./run_all_tests.sh --cases='review/*' --jobs=6    # only matching cases, 6 runs in parallel
 ./run_all_tests.sh -K                             # keep the sandboxes of failed runs
-./run_all_tests.sh --max-cost-usd=60              # raise the global cost ceiling (default $20)
+./run_all_tests.sh --max-cost-usd=40              # raise the global cost ceiling (default $20)
 ./run_all_tests.sh --force-model claude-opus-5-5  # force all models onto one model
 npm start test -- -l                              # list the cases (free)
 npm start test -- -d --cases='meta/*'             # describe input and oracles of cases (free)
@@ -79,13 +79,19 @@ cp etc/llm-local.env.sample etc/llm-local.env     # set ANTHROPIC_BASE_URL and A
 npm start test -- --llm=etc/llm-local.env --cases=meta/mint-uuid
 ```
 
-Local runs are much slower, and the reported costs are meaningless for
-non-Anthropic models. See `LOCAL_SETUP.md` for a complete gateway setup
-and `TESTS.md` ("Third-Party Gateways") for the details.
+To force one model through a gateway, use
+`./run_all_tests.sh --force-model <model> --llm=etc/llm-local.env`, as
+`run_all_tests_local.sh` does not take `--force-model`. Local runs are
+much slower, and the reported costs are meaningless for non-Anthropic
+models. See `TESTS.md` ("Third-Party Gateways") for the details and
+`LOCAL_SETUP.md` for a complete example setup.
 
-Exit codes: `0` all cases passed, `1` a case failed its pass@k
-threshold, `2` infrastructure error or cost ceiling hit. Results land in
-`results/<timestamp>/`.
+> **Notice:** the full suite (12 cases, 24 runs) costs about $22 on the
+> Anthropic API, above the default ceiling of $20: pass
+> `--max-cost-usd=40`, else the run stops early with exit code `2`.
+
+Results land in `results/<timestamp>/`; exit codes and artifacts are
+listed in `TESTS.md`.
 
 ## Adding a Test
 
@@ -107,13 +113,17 @@ threshold, `2` infrastructure error or cost ceiling hit. Results land in
 4.  Run it: `npm start test -- -K --cases=meta/mint-uuid`.
 5.  For non-deterministic skills, set `runs` and `minPass` (e.g. `3`/`2`).
 
-Optional files next to `case.yaml`: `fixture/` (seeded files and task
-plans), `answers.yaml` or `persona.md` (simulated user), `rubric.md`,
-`expected-*.md`, `oracle.py`, `suite/`. Available oracles: `notErrored`,
-`verdict`, `regex`, `fileExists`, `gitDiff`, `taskStore`, `textMetric`,
-`exec`, `suite`, `rubric`, `similar`, `review`. The existing cases are
-the best templates; the full contract is in `TESTS.md` ("Contract") and
-the authoritative schema in `src/ase-test-case.ts`.
+Files next to `case.yaml` are referenced from it by relative path, by
+convention: `fixture/` (seeded files and task plans), a prompt file (for
+`promptFile`), `answers.yaml` or `persona.md` (simulated user),
+`rubric.md`, `expected-*.md`, `oracle.py`, `suite/`, and for review
+cases `fixture/base/`, `fixture/change/`, `solution/expected.json`, and
+`thresholds.json`. Available oracles: `notErrored`, `verdict`, `regex`,
+`fileExists`, `gitDiff`, `taskStore`, `textMetric`, `exec`, `suite`,
+`rubric`, `similar`, `review`; `ARCHITECTURE.md` ("Choosing Oracles")
+helps to pick them. The existing cases are the best templates; the
+full contract is in `TESTS.md` and the authoritative schema in
+`src/ase-test-case.ts`.
 
 ## Layout
 
@@ -123,7 +133,7 @@ the authoritative schema in `src/ase-test-case.ts`.
     `review`, `task`)
 -   `agent/`: the `ase agent` end-to-end tests
 -   `docs/review/`: documentation and measurement log of the review benchmark
--   `etc/`: stx tasks, lint config, gateway profile sample
+-   `etc/`: stx tasks, lint and TypeScript config, gateway profile sample
 -   `results/`: run artifacts and summaries (never committed)
 -   `run_*.sh`: the run scripts
 
@@ -131,9 +141,8 @@ the authoritative schema in `src/ase-test-case.ts`.
 
 | File | Content |
 |---|---|
-| [`TESTS.md`](TESTS.md) | usage, gateways, case format, contract, sandboxing |
-| [`ARCHITECTURE.md`](ARCHITECTURE.md) | visual overview: execution, architecture, adding a test |
-| [`TECH_OVERVIEW.md`](TECH_OVERVIEW.md) | execution flow, framework vs. harness, touchpoints with ASE |
+| [`TESTS.md`](TESTS.md) | reference: CLI, exit codes, gateways, case format, oracles, contract, sandboxing, artifacts |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | diagrams of the program flow, framework vs. harness, touchpoints with ASE |
 | [`LOCAL_SETUP.md`](LOCAL_SETUP.md) | local model setup (LiteLLM proxy, MLX server) |
 | [`EXAMPLE_RUNS.md`](EXAMPLE_RUNS.md) | example runs on Anthropic and local models |
 | [`docs/review/README.md`](docs/review/README.md) | the review benchmark |

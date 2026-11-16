@@ -5,7 +5,7 @@
 ##  Anthropic API, after an explicit confirmation, as every real run
 ##  burns real AI tokens
 ##
-##  Usage: ./run_agent_test.sh [agent test options, e.g. --keep-failed --tool codex]
+##  Usage: ./run_agent_test.sh [--force-model <model>] [agent test options, e.g. --keep-failed --tool codex]
 ##
 ##  With "--case <name>", only this single case runs.
 ##  With "--force-model <model>", all models of the agents (including the

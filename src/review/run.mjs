@@ -116,7 +116,7 @@ function preflight (o) {
     if (thresholds !== null && (tv.commit === null || tv.modified))
         problems.push(`${path.relative(process.cwd(), c.thresholdFile)} is not committed or modified: commit the threshold file before the measurement`)
     if (!fs.existsSync(path.join(REPO_DIR, "tool", "dst", "ase.js")))
-        problems.push("tool/ is not built: cd tool && npm start build")
+        problems.push("tool/ is not built: cd ../tool && npm start build")
     if (o.budget > 5 || o.totalBudget > 30)
         problems.push("limits above the approved values (5 USD per run, 30 USD in total)")
     if (o.timeoutMin > 20)

@@ -60,7 +60,7 @@ or a regular `claude` login). Every run burns real AI tokens.
 ### With a Cloud LLM (Anthropic API)
 
 ```
-./run_all_tests.sh                                # all cases, after a cost confirmation
+./run_all_tests.sh                                # all cases, after a cost confirmation (probe/* first, rest only if they pass)
 ./run_all_tests.sh --cases='review/*' --jobs=6    # only matching cases, 6 runs in parallel
 ./run_all_tests.sh -K                             # keep the sandboxes of failed runs
 ./run_all_tests.sh --max-cost-usd=40              # raise the global cost ceiling (default $20)
@@ -74,6 +74,7 @@ npm start test -- -d --cases='meta/*'             # describe input and oracles o
 
 ```
 cp etc/llm-local.env.sample etc/llm-local.env     # set ANTHROPIC_BASE_URL and ANTHROPIC_API_KEY
+./run_all_tests_local.sh [<profile>] --cases='probe/*'  # cheap smoke test of the core mechanics first
 ./run_all_tests_local.sh [<profile>]              # all cases through the gateway
 ./run_agent_test_local.sh [<profile>]             # "ase agent" end-to-end tests through the gateway
 npm start test -- --llm=etc/llm-local.env --cases=meta/mint-uuid
@@ -86,7 +87,7 @@ much slower, and the reported costs are meaningless for non-Anthropic
 models. See `TESTS.md` ("Third-Party Gateways") for the details and
 `LOCAL_SETUP.md` for a complete example setup.
 
-> **Notice:** the full suite (12 cases, 24 runs) costs about $22 on the
+> **Notice:** the full suite (16 cases, 35 runs) costs about $27 on the
 > Anthropic API, above the default ceiling of $20: pass
 > `--max-cost-usd=40`, else the run stops early with exit code `2`.
 
@@ -130,7 +131,9 @@ full contract is in `TESTS.md` and the authoritative schema in
 -   `src/`: the harness (`ase-test.ts` CLI plus `ase-test-*.ts` modules)
 -   `src/review/`: the scorer and standalone tools of the review benchmark
 -   `cases/<group>/<name>/`: the test cases (`code`, `flow`, `meta`,
-    `review`, `task`)
+    `probe`, `review`, `task`); `probe` holds cheap, mechanically judged
+    checks of the core skill mechanics (interpreter primitives, option
+    parsing, help, MCP tool calls), meant as a first check of a new model
 -   `agent/`: the `ase agent` end-to-end tests
 -   `docs/review/`: documentation and measurement log of the review benchmark
 -   `etc/`: stx tasks, lint and TypeScript config, gateway profile sample

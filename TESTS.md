@@ -30,6 +30,14 @@ model (via `ASE_TEST_FORCE_MODEL`, `ASE_TEST_MODEL`,
 variables). `run_all_tests_local.sh` does not take it, so combine both
 via `./run_all_tests.sh --force-model <model> --llm=<profile>`.
 
+Both run scripts gate a full run: without a case selection (globs,
+`-c`/`--cases`, `-l`, `-d`), they first run the probe cases (`probe/*`)
+and run the remaining cases (`!probe/*`) only if all probes pass, else
+they exit with the exit code of the probe phase. Each phase is its own
+harness invocation, with its own results directory (`<dir>/probe` and
+`<dir>/suite` for `-r <dir>`) and its own `--max-cost-usd` ceiling. The
+script option `--no-probe-gate` runs all cases in one invocation.
+
 Further `etc/stx.conf` targets: `lint`, `test-agent` (the `ase agent`
 end-to-end tests, see `agent/README.md`), `review-selftest` and
 `review-check-language` (the free self-checks of the review benchmark,

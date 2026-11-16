@@ -8,4 +8,4 @@ oracles:
   - regex:
       in: output
       match:
-        - "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+        - "201e99ec-baed-5d58-9ec7-70d956e26c53"

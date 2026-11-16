@@ -1,0 +1,24 @@
+#   probe: a state-changing MCP tool call -- the status of the seeded task
+#   must be set through "ase_task_status" with the correct parameters
+#   (a valid "solo" transition OPEN -> SHELVED), touching no project file
+skill: ase-task-status
+args: "alpha: SHELVED"
+runs: 3
+minPass: 2
+timeoutSec: 180
+budget: { maxUsd: 1.00 }
+fixture:
+  git: true
+  lifecycle: solo
+  tasks:
+    - fixture/TASK-alpha.md
+oracles:
+  - notErrored: true
+  - regex:
+      in: output
+      match:
+        - "SHELVED"
+  - taskStore:
+      id: alpha
+      status: SHELVED
+  - gitDiff: { empty: true }

@@ -1,0 +1,22 @@
+#   probe: the four interpreter primitives every ASE skill relies on
+#   (XML placeholders, control flow, regex, arithmetic), self-tested by
+#   "ase-meta-compat" against the expected values of the MCP tool "ase_compat";
+#   the per-category rows localize which primitive a weaker model breaks
+skill: ase-meta-compat
+args: ""
+runs: 2
+minPass: 2
+timeoutSec: 180
+budget: { maxUsd: 1.00 }
+oracles:
+  - notErrored: true
+  - regex:
+      in: output
+      match:
+        - "XML Placeholders\\s*\\|[^|\\n]*\\|\\s*6/6"
+        - "Control Flow\\s*\\|[^|\\n]*\\|\\s*6/6"
+        - "Regex Matching\\s*\\|[^|\\n]*\\|\\s*7/7"
+        - "Arithmetic\\s*\\|[^|\\n]*\\|\\s*6/6"
+        - "FULLY COMPATIBLE"
+      not:
+        - "failed:"

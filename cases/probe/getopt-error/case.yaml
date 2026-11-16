@@ -1,0 +1,16 @@
+#   probe: the option parsing error path -- an unknown option must be
+#   rejected by the MCP tool "ase_getopt", reported through the error
+#   template, and stop the skill before anything is minted
+skill: ase-meta-mint
+args: "--bogus test harness fixture"
+runs: 3
+minPass: 2
+timeoutSec: 180
+budget: { maxUsd: 1.00 }
+oracles:
+  - regex:
+      in: output
+      match:
+        - "ERROR: option parsing failed"
+      not:
+        - "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"

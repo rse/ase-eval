@@ -9,6 +9,9 @@
 ##  The profile is taken from the first argument, else from $ASE_TEST_LLM,
 ##  else from "etc/llm-local.env"; without any of them, it is asked for.
 ##
+##  Without a case selection, the cheap probe cases ("probe/*") run first,
+##  and the remaining cases only if they pass ("--no-probe-gate" disables it).
+##
 
 set -euo pipefail
 
@@ -52,4 +55,6 @@ echo "as a locally served model generates far slower than the Anthropic API and 
 echo "runs are usually serialized (ASE_TEST_JOBS=1)."
 echo ""
 echo "Note: the judges and simulators run there, too, and the reported costs are meaningless."
-exec node --import tsx src/ase-test.ts --llm="$profile" "$@"
+echo "The probe cases (probe/*) run first, and the remaining cases only if all of them pass."
+source etc/run-gated.sh
+runGated "--llm=$profile" "$@"

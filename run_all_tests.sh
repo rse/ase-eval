@@ -8,6 +8,9 @@
 ##  With "--force-model <model>", all models (session, sub-agent aliases,
 ##  judge, and simulator, even per-case "turns.model") are forced to <model>.
 ##
+##  Without a case selection, the cheap probe cases ("probe/*") run first,
+##  and the remaining cases only if they pass ("--no-probe-gate" disables it).
+##
 
 set -euo pipefail
 
@@ -42,8 +45,11 @@ This runs ALL test cases of the ASE skill test harness.
 
 WARNING: every case runs real agent sessions against the Anthropic API
 (or the configured gateway), which consumes actual tokens and costs
-actual money (roughly $22 for the full suite of 12 cases, while the
+actual money (roughly $27 for the full suite of 16 cases, while the
 default --max-cost-usd ceiling is $20, so pass e.g. --max-cost-usd=40).
+
+The probe cases (probe/*, roughly $4) run first, and the remaining cases
+only if all of them pass; --max-cost-usd applies to each of the two phases.
 
 EOF
 read -r -p "Run all tests now? [y/N] " answer
@@ -52,5 +58,6 @@ if [[ "$answer" != "y" && "$answer" != "Y" ]]; then
     exit 0
 fi
 
-#   run all cases, passing through any additional harness options
-exec node --import tsx src/ase-test.ts "$@"
+#   run all cases (probe-gated), passing through any additional harness options
+source etc/run-gated.sh
+runGated "" "$@"

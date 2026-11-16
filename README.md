@@ -118,6 +118,8 @@ listed in `TESTS.md`.
 3.  Check it for free: `npm start test -- --describe --cases=meta/mint-uuid`.
 4.  Run it: `npm start test -- -K --cases=meta/mint-uuid`.
 5.  For non-deterministic skills, set `runs` and `minPass` (e.g. `3`/`2`).
+6.  Add a `README.md` with the sections Objective, Failures Uncovered,
+    Artifacts, and Example Run (see any existing case).
 
 Files next to `case.yaml` are referenced from it by relative path, by
 convention: `fixture/` (seeded files and task plans), a prompt file (for

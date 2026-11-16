@@ -95,7 +95,9 @@ complete example setup.
 
 A case is a directory `cases/<group>/<name>/` with a `case.yaml`; it is
 discovered as `<group>/<name>`. All file references are relative to the
-case directory and must stay inside it. Unknown keys are errors, and
+case directory and must stay inside it. A `README.md` next to it
+documents objective, uncovered failures, artifacts, and an example run;
+it is never copied into the sandbox. Unknown keys are errors, and
 every case is validated (including its regular expressions and
 simulator scripts) before any session starts. `src/ase-test-case.ts`
 holds the authoritative schema.

@@ -237,7 +237,7 @@ A case is a directory `cases/<name>/` with:
     discovered via `python -m unittest discover -s suite`; it finds the
     produced project through `$AGENT_TEST_PROJECT` and runs the program
     through `sys.executable`
--   `TEST-DESCRIPTION.md`: purpose, coverage, and suite of the case
+-   `README.md`: objective, failures uncovered, artifacts, and an example run of the case
 
 | Case               | Runner     | Program        | Tests | Cost (approx.) |
 |--------------------|------------|----------------|-------|----------------|

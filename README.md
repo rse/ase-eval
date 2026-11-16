@@ -31,7 +31,8 @@ npm install # executed inside the ase-eval dir
 ./run_agent_test_local.sh
 ./run_agent_test_local.sh
 ```
-4. Force a specific model
+4. Force a specific model; this is especially useful when testing again a
+liteLLM proxy.
 ```
 # first run claude to see what models are available:
 # either you just type /model in claude to see the list, or use this one-liner: 

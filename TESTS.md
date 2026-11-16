@@ -21,6 +21,7 @@ via `npm start test -- <options>` and the `run_*.sh` scripts.
 | `-K, --keep-failed`      | keep the sandboxes of failed runs                                    |
 | `-m, --max-cost-usd <n>` | global cost ceiling in USD (default: `20`)                           |
 | `-r, --results <dir>`    | results directory (default: `results/<timestamp>`)                   |
+| `-C, --cases-dir <dir>`  | cases directory (default: `cases`; e.g. `uplift` for the uplift benchmark) |
 | `--llm <file>`           | gateway profile (default: `$ASE_TEST_LLM`)                           |
 
 `run_all_tests.sh` additionally takes `--force-model <model>`, which
@@ -112,6 +113,7 @@ holds the authoritative schema.
 | `fixture`         | `git` (init and commit the project), `config` (written to `.ase/config.yaml`), `tasks` (task plan files seeded into `.ase/task/`), `lifecycle` (of the seeded store), `files` (a file tree copied into the project), `change` (see below) |
 | `turns`           | interactive session: `simulator` (`scripted` with `script`, or `llm` with `persona`), `model`, `maxTurns` |
 | `disallowedTools` | tools the session must not use, e.g. `[ Edit, Write ]`                                         |
+| `permissionMode`  | `plan` starts the session in Claude Code plan mode; its `ExitPlanMode` call is auto-approved and switches to `acceptEdits` (single-session cases only) |
 | `oracles`         | the checks deciding the verdict (at least one)                                                 |
 
 `fixture.change` (`files`, `delete`, `message`; requires `fixture.git`)

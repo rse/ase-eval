@@ -1,0 +1,66 @@
+#   uplift benchmark baseline arm "plan-mode" (see "uplift/README.md"): the same
+#   vague CSV-tool request, but in Claude Code plan mode ("permissionMode:
+#   plan") with the guarded spec-holding user simulated by claude-opus-5-5:
+#   questions and the plan approval are the only way to the hidden details
+promptFile: prompt.md
+permissionMode: plan
+runs: 2
+minPass: 1
+timeoutSec: 900
+budget: { maxUsd: 5.00 }
+turns:
+  simulator: llm
+  persona: persona.md
+  model: claude-opus-5-5
+  maxTurns: 12
+fixture:
+  git: true
+  files: fixture/tree
+oracles:
+  - notErrored: true
+  - fileExists: csvq.py
+  - exec:
+      command:   "python3 csvq.py select name,comment"
+      reference: "python3 oracle.py select name,comment"
+      stdin:
+        - |
+          name,team,points,comment
+          Alice,Red,12,"likes ""quotes"" a lot"
+          Bob,Blue,7,"comma, inside"
+          Carla,Red,9,
+          Eve,Green,11,"two
+          lines"
+        - |
+          comment,name
+          plain,Dan
+  - exec:
+      command:   "python3 csvq.py filter 'points>9'"
+      reference: "python3 oracle.py filter 'points>9'"
+      stdin:
+        - |
+          name,team,points,comment
+          Alice,Red,12,"likes ""quotes"" a lot"
+          Bob,Blue,7,"comma, inside"
+          Carla,Red,9,
+          Dan,Blue,15,plain
+        - |
+          points,name
+          3,a
+          10,b
+  - exec:
+      command:   "python3 csvq.py avg points"
+      reference: "python3 oracle.py avg points"
+      stdin:
+        - |
+          name,points
+          a,12
+          b,7
+          c,9
+          d,15
+          e,11
+        - |
+          points
+          2.5
+          3
+  - suite:
+      dir: suite

@@ -1,0 +1,60 @@
+#   uplift benchmark baseline arm "one-shot" (see "uplift/README.md"): the vague
+#   CSV-tool request is one-shotted by plain Claude Code -- no questions are
+#   possible ("AskUserQuestion" is disallowed for single-shot sessions), so
+#   every unstated detail of the hidden specification must be guessed
+promptFile: prompt.md
+runs: 2
+minPass: 1
+timeoutSec: 600
+budget: { maxUsd: 3.00 }
+fixture:
+  git: true
+  files: fixture/tree
+oracles:
+  - notErrored: true
+  - fileExists: csvq.py
+  - exec:
+      command:   "python3 csvq.py select name,comment"
+      reference: "python3 oracle.py select name,comment"
+      stdin:
+        - |
+          name,team,points,comment
+          Alice,Red,12,"likes ""quotes"" a lot"
+          Bob,Blue,7,"comma, inside"
+          Carla,Red,9,
+          Eve,Green,11,"two
+          lines"
+        - |
+          comment,name
+          plain,Dan
+  - exec:
+      command:   "python3 csvq.py filter 'points>9'"
+      reference: "python3 oracle.py filter 'points>9'"
+      stdin:
+        - |
+          name,team,points,comment
+          Alice,Red,12,"likes ""quotes"" a lot"
+          Bob,Blue,7,"comma, inside"
+          Carla,Red,9,
+          Dan,Blue,15,plain
+        - |
+          points,name
+          3,a
+          10,b
+  - exec:
+      command:   "python3 csvq.py avg points"
+      reference: "python3 oracle.py avg points"
+      stdin:
+        - |
+          name,points
+          a,12
+          b,7
+          c,9
+          d,15
+          e,11
+        - |
+          points
+          2.5
+          3
+  - suite:
+      dir: suite

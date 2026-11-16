@@ -35,6 +35,8 @@ program
     .argument("[globs...]", "case name globs to run (default: all cases)")
     .option("-c, --cases <glob...>", "case name globs to run (for \"npm start test\", " +
         "whose positional words stx consumes as task names)")
+    .option("-C, --cases-dir <dir>", "cases directory, relative to the harness root " +
+        "(e.g. \"uplift\" for the uplift benchmark)", "cases")
     .option("-j, --jobs <n>", "number of parallel runs (default: $ASE_TEST_JOBS, else 4)")
     .option("-l, --list", "list the discovered cases and exit", false)
     .option("-d, --describe", "describe the matched cases (input, fixture, simulator, oracles) and exit", false)
@@ -62,7 +64,7 @@ if (llmProfile !== undefined && llmProfile !== "") {
 }
 
 /*  discover and filter the cases  */
-const casesDir = path.join(harnessRoot, "cases")
+const casesDir = path.join(harnessRoot, opts.casesDir)
 let cases = caseDiscover(casesDir)
 if (globs.length > 0) {
     const matchers = globs.map((glob) => picomatch(glob))

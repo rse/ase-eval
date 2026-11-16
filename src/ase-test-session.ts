@@ -99,6 +99,13 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         abort.abort()
     }, stage.timeoutSec * 1000)
 
+    /*  in plan mode, an "ExitPlanMode" call is auto-approved (the simulated user
+        accepts every plan), and right after it the session is switched over to
+        "acceptEdits" (outside the permission round-trip, on the next message),
+        so the approved plan gets implemented in the same session  */
+    let planApproved = false
+    let planSwitched = false
+
     /*  the session options: the working-copy plugin, the sandboxed environment and
         settings, automatically classified permissions, and a hard budget and turn cap
         (the SDK "maxTurns" counts agentic turns: a generous 4 per allowed user turn,
@@ -108,7 +115,7 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         env:             sandbox.env,
         plugins:         [ { type: "local", path: path.join(repoRoot, "plugin") } ],
         settingSources:  [ "user" ],
-        permissionMode:  "auto",
+        permissionMode:  stage.permissionMode,
         maxTurns:        simulator !== null ? stage.turns!.maxTurns * 4 : 32,
         maxBudgetUsd:    stage.maxUsd,
         abortController: abort,
@@ -120,9 +127,11 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
             answers injected into its input (pre-supplied answers skip the interactive
             dialog), while every other permission request is blanket-allowed  */
         disallowedTools: [ ...stage.disallowedTools, ...(simulator === null ? [ "AskUserQuestion" ] : []) ],
-        ...(simulator === null ? {} : {
+        ...(simulator === null && stage.permissionMode !== "plan" ? {} : {
             canUseTool: async (toolName, toolInput) => {
-                if (toolName === "AskUserQuestion") {
+                if (toolName === "ExitPlanMode")
+                    planApproved = true
+                if (toolName === "AskUserQuestion" && simulator !== null) {
                     const questions = (toolInput as { questions?: Question[] }).questions ?? []
                     const answers   = await simulator.answers(questions)
                     for (const question of questions)
@@ -148,7 +157,12 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
     sendUser(prompt)
     let userTurns = 1
     try {
-        for await (const msg of query({ prompt: input(), options })) {
+        const session = query({ prompt: input(), options })
+        for await (const msg of session) {
+            if (planApproved && !planSwitched) {
+                planSwitched = true
+                await session.setPermissionMode("acceptEdits")
+            }
             record.onMessage(msg as Record<string, any>)
             result.messages.push(msg as Record<string, any>)
             if (msg.type === "system" && msg.subtype === "init") {

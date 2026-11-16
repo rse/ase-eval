@@ -73,6 +73,7 @@ the probe tests.
 npm start test -- -l                              # list the cases (free)
 npm start test -- -d --cases='meta/*'             # describe input and oracles of cases (free)
 ./run_agent_test.sh                               # "ase agent" end-to-end tests
+./run_uplift_test.sh                              # ASE uplift benchmark incl. comparison (~$15-25)
 ```
 
 ### With a Local LLM (Anthropic-compatible gateway, e.g. LiteLLM)
@@ -92,9 +93,9 @@ much slower, and the reported costs are meaningless for non-Anthropic
 models. See `TESTS.md` ("Third-Party Gateways") for the details and
 `LOCAL_SETUP.md` for a complete example setup.
 
-> **Notice:** the full suite (16 cases, 35 runs) costs about $27 on the
+> **Notice:** the full suite (17 cases, 37 runs) costs roughly $35 on the
 > Anthropic API, above the default ceiling of $20: pass
-> `--max-cost-usd=40`, else the run stops early with exit code `2`.
+> `--max-cost-usd=50`, else the run stops early with exit code `2`.
 
 Results land in `results/<timestamp>/`; exit codes and artifacts are
 listed in `TESTS.md`.
@@ -142,6 +143,8 @@ full contract is in `TESTS.md` and the authoritative schema in
     checks of the core skill mechanics (interpreter primitives, option
     parsing, help, MCP tool calls), meant as a first check of a new model
 -   `agent/`: the `ase agent` end-to-end tests
+-   `uplift/`: the ASE uplift benchmark (plain Claude baselines vs. the
+    ASE workflow, see `uplift/README.md`)
 -   `docs/review/`: documentation and measurement log of the review benchmark
 -   `etc/`: stx tasks, lint and TypeScript config, gateway profile sample
 -   `results/`: run artifacts and summaries (never committed)

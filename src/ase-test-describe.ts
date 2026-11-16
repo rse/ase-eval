@@ -177,6 +177,9 @@ export const describeCase = (caze: TestCase): string => {
             `files "${path.relative(caze.dir, caze.fixture.change.files)}"` +
             (caze.fixture.change.delete.length > 0 ? ` (deleting ${caze.fixture.change.delete.join(", ")})` : ""))
     lines.push(`    fixture:   ${fixture.join(", ")}`)
+    if (!caze.staged && caze.stages[0].permissionMode !== "auto")
+        lines.push(`    mode:      ${caze.stages[0].permissionMode} permission mode ` +
+            "(an \"ExitPlanMode\" call is approved and switches to \"acceptEdits\")")
     if (caze.disallowedTools.length > 0)
         lines.push(`    disallow:  ${caze.disallowedTools.join(", ")}`)
     if (caze.turns !== null)

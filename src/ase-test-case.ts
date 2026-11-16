@@ -165,6 +165,7 @@ const caseSchema = z.strictObject({
     skill:      z.string().optional(),
     args:       z.string().optional(),
     promptFile: z.string().optional(),
+    permissionMode: z.enum([ "plan" ]).optional(),
     stages:     z.array(stageSchema).min(1).optional(),
     runs:       z.number().int().min(1).optional(),
     minPass:    z.number().int().min(1).optional(),
@@ -208,6 +209,7 @@ export type Stage = {
     timeoutSec: number
     maxUsd:     number
     turns:      Turns | null
+    permissionMode: "auto" | "plan"
     disallowedTools: string[]
     oracles:    OracleSpec[]
 }
@@ -266,6 +268,8 @@ export const caseLoad = (casesDir: string, file: string): TestCase => {
             || spec.disallowedTools !== undefined))
         throw new Error(`case "${name}": "turns", "timeoutSec", "budget", and "disallowedTools" ` +
             "belong to the stages of a staged case")
+    if (spec.stages !== undefined && spec.permissionMode !== undefined)
+        throw new Error(`case "${name}": "permissionMode" is supported for single-session cases only`)
     if (spec.fixture?.change !== undefined && spec.fixture.git !== true)
         throw new Error(`case "${name}": "fixture.change" requires "fixture.git"`)
     const resolve = (ref: string, kind: string): string => {
@@ -342,6 +346,7 @@ export const caseLoad = (casesDir: string, file: string): TestCase => {
             timeoutSec: stage.timeoutSec ?? 300,
             maxUsd:     stage.budget?.maxUsd ?? 2.0,
             turns:      turnsLoad(stage.turns, where),
+            permissionMode: "auto",
             disallowedTools: stage.disallowedTools ?? [],
             oracles:    (stage.oracles ?? []).map(oracleResolve)
         }
@@ -388,6 +393,7 @@ export const caseLoad = (casesDir: string, file: string): TestCase => {
             timeoutSec: result.timeoutSec,
             maxUsd:     result.maxUsd,
             turns:      result.turns,
+            permissionMode: spec.permissionMode ?? "auto",
             disallowedTools: result.disallowedTools,
             oracles:    []
         } ]

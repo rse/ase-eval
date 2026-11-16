@@ -31,6 +31,20 @@ npm install # executed inside the ase-eval dir
 ./run_agent_test_local.sh
 ./run_agent_test_local.sh
 ```
+4. Force a specific model
+```
+# first run claude to see what models are available:
+# either you just type /model in claude to see the list, or use this one-liner: 
+echo '{"type":"control_request","request_id":"1","request":{"subtype":"initialize"}}' \
+  | claude -p --input-format stream-json --output-format stream-json --verbose 2>/dev/null \
+  | jq -r 'select(.type=="control_response") | .response.response.models[] | "\(.value)\t\(.resolvedModel // "")\t\(.displayName)"'
+
+# once you know the name of the model, you can force it: 
+./run_all_tests.sh --force-model eu.anthropic.claude-sonnet-5
+
+# this basically aliases all models to this specific model
+
+```
 
 
 ## About

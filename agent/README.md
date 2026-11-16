@@ -17,7 +17,8 @@ runs `ase` as `node <ASE>/tool/bin/ase` (the `tool/` of the surrounding
 ASE working copy, i.e., `../tool`), and finds Python as `python3`,
 `python`, or `py -3`, so it works on Linux, macOS, and Windows alike.
 
-> **Notice:** A real run spends real AI tokens (about $1.60 per case).
+> **Notice:** A real run spends real AI tokens (about $1.70 and 4 minutes per
+> case with `claude-sonnet-5-5`).
 
 ## Flow
 
@@ -241,8 +242,8 @@ A case is a directory `cases/<name>/` with:
 
 | Case               | Runner     | Program        | Tests | Cost (approx.) |
 |--------------------|------------|----------------|-------|----------------|
-| `wordcount-python` | `pipeline` | `wordcount.py` | 12    | $1.60          |
-| `fibonacci-fleet`  | `fleet`    | `fibonacci.py` | 13    | $1.60          |
+| `wordcount-python` | `pipeline` | `wordcount.py` | 12    | $1.69          |
+| `fibonacci-fleet`  | `fleet`    | `fibonacci.py` | 13    | $1.72          |
 
 To check a test suite itself without any agent, run it against a
 reference implementation:

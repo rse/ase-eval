@@ -3,7 +3,7 @@ agent/fibonacci-fleet
 
 `ase agent fleet` end-to-end test, runner `fleet`: task `fibonacci`
 (`PLANNED`) → `INTEGRATED`, program `fibonacci.py` (the first N Fibonacci
-numbers, importing only `sys`), 13 suite tests, about $1.60. Generic
+numbers, importing only `sys`), 13 suite tests, about $1.70. Generic
 steps, fleet flow, and pass criteria: [`agent/README.md`](../../README.md).
 
 | File                      | Role                                                           |
@@ -84,27 +84,42 @@ In `results/agent-<timestamp>-fibonacci-fleet/`:
 ./run_agent_test.sh --case fibonacci-fleet         # after a cost confirmation
 ```
 
-No recorded run is checked in; the shape of a passing `report.md`, as
-rendered by `agent/ase-agent-test.mts` (trimmed; values in `<>` vary;
-for a fleet, the duration is the time from the fleet start until the
-task reached the status, and the exit code is always `0`):
+Recorded run `results/agent-2026-11-16T15-45-40-883Z-fibonacci-fleet/`
+(all agents on `claude-sonnet-5-5`), `report.md` trimmed. For a fleet,
+"Duration" is the time from the fleet start until the task reached the
+status, and "Exit" is always `0`:
 
 ```
 # ase agent test: fibonacci-fleet
 
 **Verdict: PASS**
 
+Tool `claude`, duration 3.7m, cost $1.72
+
 | Agent | Exit | Duration | Status after | Expected | Cost | Pass |
-| implementer | 0 | <m> | IMPLEMENTED | IMPLEMENTED | $<x> | yes |
-| qualifier   | 0 | <m> | QUALIFIED   | QUALIFIED   | $<x> | yes |
-| integrator  | 0 | <m> | INTEGRATED  | INTEGRATED  | $<x> | yes |
+| implementer | 0 | 1.6m | IMPLEMENTED | IMPLEMENTED | $0.73 | yes |
+| qualifier | 0 | 2.6m | QUALIFIED | QUALIFIED | $0.30 | yes |
+| integrator | 0 | 3.4m | INTEGRATED | INTEGRATED | $0.69 | yes |
 
 -   ✓ fleet started: exit 0
 -   ✓ fleet running with all members: relay, implementer, qualifier, integrator
--   ✓ agents present on the agent relay: present: <agents>
+-   ✓ agents present on the agent relay: present: qualifier, integrator, implementer
 -   ✓ fleet stopped with its agent relay: stop exit 0, fleet gone, relay gone
 -   ✓ task integrated: INTEGRATED
--   ✓ fibonacci.py on master: <files of master>
+-   ✓ fibonacci.py on master: .ase, .gitignore, fibonacci.py
 -   ✓ working copy clean on master: branch master
 -   ✓ all suite tests passed: passed 13/13, ran 13, failures 0, errors 0, skipped 0
+```
+
+`agents.log`, the fleet start and the status transitions (timestamps and
+prefixes trimmed):
+
+```
+fleet: started relay, implementer, qualifier, integrator
+implementer[1]: fibonacci: claimed task (status "PLANNED" → "IMPLEMENTING")
+implementer[1]: fibonacci: task processed successfully (status "IMPLEMENTED", tag "ase-agent-implementer")
+qualifier[1]: fibonacci: claimed task (status "IMPLEMENTED" → "QUALIFYING")
+qualifier[1]: fibonacci: task processed successfully (status "QUALIFYING" → "QUALIFIED", tag "ase-agent-qualifier:approve")
+integrator[1]: fibonacci: claimed task (status "QUALIFIED" → "INTEGRATING")
+integrator[1]: fibonacci: task processed successfully (status "INTEGRATED", tag "ase-agent-integrator")
 ```

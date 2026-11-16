@@ -3,7 +3,7 @@ agent/wordcount-python
 
 `ase agent` end-to-end test, runner `pipeline`: task `wordcount`
 (`PLANNED`) → `INTEGRATED`, program `wordcount.py` (a Python `wc`
-clone), 12 suite tests, about $1.60. Generic steps, runners, and pass
+clone), 12 suite tests, about $1.70. Generic steps, runners, and pass
 criteria: [`agent/README.md`](../../README.md).
 
 | File                      | Role                                                          |
@@ -77,22 +77,44 @@ In `results/agent-<timestamp>-wordcount-python/`:
 node agent/ase-agent-test.mts --dry-run            # sandbox and task only, no tokens
 ```
 
-No recorded run is checked in; the shape of a passing `report.md`, as
-rendered by `agent/ase-agent-test.mts` (trimmed; values in `<>` vary,
-"Status after" also lists the task tags, if any):
+Recorded run `results/agent-2026-11-16T15-45-40-883Z-wordcount-python/`
+(all agents on `claude-sonnet-5-5`), `report.md` trimmed:
 
 ```
 # ase agent test: wordcount-python
 
 **Verdict: PASS**
 
+Tool `claude`, duration 3.6m, cost $1.69
+
 | Agent | Exit | Duration | Status after | Expected | Cost | Pass |
-| implementer | 0 | <m> | IMPLEMENTED | IMPLEMENTED | $<x> | yes |
-| qualifier   | 0 | <m> | QUALIFIED | QUALIFIED | $<x> | yes |
-| integrator  | 0 | <m> | INTEGRATED | INTEGRATED | $<x> | yes |
+| implementer | 0 | 1.7m | IMPLEMENTED [ase-agent-implementer] | IMPLEMENTED | $0.67 | yes |
+| qualifier | 0 | 0.7m | QUALIFIED [ase-agent-implementer, ase-agent-qualifier:approve] | QUALIFIED | $0.34 | yes |
+| integrator | 0 | 1.0m | INTEGRATED [ase-agent-implementer, ase-agent-qualifier:approve, ase-agent-integrator] | INTEGRATED | $0.68 | yes |
 
 -   ✓ task integrated: INTEGRATED
--   ✓ wordcount.py on master: <files of master>
+-   ✓ wordcount.py on master: .ase, .gitignore, wordcount.py
 -   ✓ working copy clean on master: branch master
 -   ✓ all suite tests passed: passed 12/12, ran 12, failures 0, errors 0, skipped 0
+```
+
+`agents.log`, the status transitions (timestamps and prefixes trimmed):
+
+```
+implementer[1]: wordcount: claimed task (status "PLANNED" → "IMPLEMENTING")
+implementer[1]: wordcount: running: claude -p [...] "/ase:ase-task-implement --next DONE --changeset worktree --worktree cs-wordcount wordcount"
+implementer[1]: wordcount: task processed successfully (status "IMPLEMENTED", tag "ase-agent-implementer")
+qualifier[1]: wordcount: claimed task (status "IMPLEMENTED" → "QUALIFYING")
+qualifier[1]: wordcount: task processed successfully (status "QUALIFYING" → "QUALIFIED", tag "ase-agent-qualifier:approve")
+integrator[1]: wordcount: claimed task (status "QUALIFIED" → "INTEGRATING")
+integrator[1]: wordcount: task processed successfully (status "INTEGRATED", tag "ase-agent-integrator")
+```
+
+`git.log`: the change set landed as one squashed commit on `master`:
+
+```
+* 5e5e494  (HEAD -> master) Squashed commit of the following:
+|  wordcount.py | 37 +++++++++++++++++++++++++++++++++++++
+* 90f3ebb  ASE project setup
+* 89e4133  initial commit
 ```

@@ -1,5 +1,5 @@
 skill: ase-meta-mint
-args: "uuid test harness fixture"
+args: "--type uuid test harness fixture"
 runs: 1
 timeoutSec: 240
 budget: { maxUsd: 1.00 }
@@ -8,4 +8,4 @@ oracles:
   - regex:
       in: output
       match:
-        - "201e99ec-baed-5d58-9ec7-70d956e26c53"
+        - "de7fe4e9-9e28-501d-a4bc-91491d07cdb1"

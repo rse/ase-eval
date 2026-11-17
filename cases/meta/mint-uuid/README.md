@@ -1,7 +1,7 @@
 meta/mint-uuid
 ==============
 
-`ase-meta-mint uuid test harness fixture`, 1 run, budget $1.00.
+`ase-meta-mint --type uuid test harness fixture`, 1 run, budget $1.00.
 
 ## Objective
 
@@ -17,7 +17,7 @@ from a UUID the model invented.
 -   **Skill aborts, times out, or exceeds its budget**: caught by
     `notErrored`.
 -   **UUID invented instead of fetched from `ase_mint`**: caught by
-    `regex` on `201e99ec-baed-5d58-9ec7-70d956e26c53`.
+    `regex` on `de7fe4e9-9e28-501d-a4bc-91491d07cdb1`.
 -   **Wrong parameters passed to `ase_mint`**, such as a different hint or
     the type `sha1`: caught by the same `regex`, because the derived
     value changes.
@@ -41,23 +41,26 @@ The case writes no project files. The general artifact table is in
 npm start test -- -K --cases=meta/mint-uuid
 ```
 
-Input: the prompt `/ase:ase-meta-mint uuid test harness fixture` in an
-empty sandbox. The leading `uuid` selects the type. Excerpt from
-`results/2026-11-16T12-01-24/meta/mint-uuid/run-1/transcript.md`
-(`claude-opus-5-5`, passed):
+Input: the prompt `/ase:ase-meta-mint --type uuid test harness fixture`
+in an empty sandbox. `--type uuid` selects the type, the rest is the
+hint. Excerpt from
+`results/2026-11-16T19-09-35/meta/mint-uuid/run-1/transcript.md`
+(`global.openai.gpt-6-sol`; its `ase_mint` call and value match the
+current oracle, though that run was still scored against the older
+argument form):
 
 ```
 ⧉ **ASE**: ✪ skill: **ase-meta-mint**, ▶ options: type: **uuid**, count: **1**
 
-**TOOL** `mcp__plugin_ase_ase__ase_mint`: {"type":"uuid","hint":"uuid test harness fixture","count":1}
+**TOOL** `mcp__plugin_ase_ase__ase_mint`: {"type":"uuid","hint":"test harness fixture","count":1}
 
 **ASSISTANT**:
 ╭────━━━━**(** ⧉ ASE: **`MINT`**: `uuid` **)**━━━━──────────────
-│ ●   **HINT**: uuid test harness fixture
-│ ○   `201e99ec-baed-5d58-9ec7-70d956e26c53`
+│ ●   **HINT**: test harness fixture
+│ ○   `de7fe4e9-9e28-501d-a4bc-91491d07cdb1`
 ╰────━━━━**(** ⧉ ASE: **`MINT`**: `uuid` **)**━━━━──────────────
 
-**RESULT**: success (turns: 3, cost: $0.3623)
+**RESULT**: success (turns: 3, cost: $0.2806)
 ```
 
 Oracle results from `result.json`:

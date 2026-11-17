@@ -60,8 +60,9 @@ export const reportStage = (label: string, stage: number, total: number, skill: 
             console.log(`    ${chalk.yellow(`◦ ${oracle.kind}`)}: ${oracle.detail}`)
 }
 
-/*  print the console report of one finished run  */
-export const reportRun = (name: string, outcome: RunOutcome): void => {
+/*  print the console report of one finished run, with the optional failure
+    hint of the case shown below any failed run (e.g. operator guidance)  */
+export const reportRun = (name: string, outcome: RunOutcome, failHint = ""): void => {
     const mark = outcome.outcome === "pass" ? chalk.green("✔") :
         outcome.outcome === "fail"    ? chalk.red("✘") :
             outcome.outcome === "skipped" ? chalk.yellow("−") : chalk.red("⚠")
@@ -76,6 +77,8 @@ export const reportRun = (name: string, outcome: RunOutcome): void => {
         console.log(`    ${chalk.red("✘ evaluation")}: ${outcome.failure}`)
     if (outcome.outcome === "error")
         console.log(`    ${chalk.red("⚠ infra")}: ${outcome.failure}`)
+    if (outcome.outcome !== "pass" && outcome.outcome !== "skipped" && failHint !== "")
+        console.log(`    ${chalk.cyan("↪ hint")}: ${failHint}`)
     if (outcome.outcome !== "pass" && outcome.artifacts !== "")
         console.log(`    ${chalk.dim(`artifacts: ${outcome.artifacts}`)}`)
 }

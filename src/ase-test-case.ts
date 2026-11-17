@@ -169,6 +169,7 @@ const caseSchema = z.strictObject({
     stages:     z.array(stageSchema).min(1).optional(),
     runs:       z.number().int().min(1).optional(),
     minPass:    z.number().int().min(1).optional(),
+    failHint:   z.string().optional(),
     timeoutSec: z.number().int().min(1).optional(),
     budget:     z.strictObject({
         maxUsd:     z.number().positive()
@@ -232,6 +233,7 @@ export type TestCase = {
     prompt:     string
     runs:       number
     minPass:    number
+    failHint:   string
     timeoutSec: number
     maxUsd:     number
     fixture: {
@@ -361,6 +363,7 @@ export const caseLoad = (casesDir: string, file: string): TestCase => {
             fs.readFileSync(resolve(spec.promptFile, "prompt"), "utf8").trim() : "",
         runs,
         minPass:    spec.minPass ?? runs,
+        failHint:   spec.failHint ?? "",
         timeoutSec: staged ? stages.reduce((sum, stage) => sum + stage.timeoutSec, 0) : (spec.timeoutSec ?? 300),
         maxUsd:     staged ? stages.reduce((sum, stage) => sum + stage.maxUsd, 0) : (spec.budget?.maxUsd ?? 2.0),
         fixture: {

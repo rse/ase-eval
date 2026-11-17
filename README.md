@@ -93,7 +93,7 @@ much slower, and the reported costs are meaningless for non-Anthropic
 models. See `TESTS.md` ("Third-Party Gateways") for the details and
 `LOCAL_SETUP.md` for a complete example setup.
 
-> **Notice:** the full suite (17 cases, 37 runs) costs roughly $35 on the
+> **Notice:** the full suite (18 cases, 40 runs) costs roughly $36 on the
 > Anthropic API, above the default ceiling of $20: pass
 > `--max-cost-usd=50`, else the run stops early with exit code `2`.
 

@@ -324,7 +324,7 @@ const worker = async (): Promise<void> => {
             continue
         }
         item.outcome = await executeRun(item.caze, item.run)
-        reportRun(item.caze.name, item.outcome)
+        reportRun(item.caze.name, item.outcome, item.caze.failHint)
         if (totalUsd > maxCostUsd && aborted === "")
             aborted = `cost ceiling $${maxCostUsd.toFixed(2)} exceeded`
     }

@@ -109,6 +109,7 @@ holds the authoritative schema.
 | `promptFile`      | instead of `skill`: a file holding a free-text prompt                                          |
 | `stages`          | instead of `skill`: a list of skill invocations (see "Staged Cases")                           |
 | `runs`, `minPass` | number of runs and the pass@k threshold                                                        |
+| `failHint`        | guidance printed below every failed run of the case, e.g. what to report to a gateway operator |
 | `timeoutSec`, `budget.maxUsd` | wall-clock limit and cost budget of one run                                        |
 | `fixture`         | `git` (init and commit the project), `config` (written to `.ase/config.yaml`), `tasks` (task plan files seeded into `.ase/task/`), `lifecycle` (of the seeded store), `files` (a file tree copied into the project), `change` (see below) |
 | `turns`           | interactive session: `simulator` (`scripted` with `script`, or `llm` with `persona`), `model`, `maxTurns` |

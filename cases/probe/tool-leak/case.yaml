@@ -1,0 +1,33 @@
+#   probe: the tool-call translation of the model gateway -- a forced MCP
+#   tool call ("ase_mint") must come back as an executed call, never as the
+#   model's native tool-call markup leaked into the assistant text (as seen
+#   with DeepSeek v3.2, whose DSML markup an outdated gateway adapter passes
+#   through verbatim, silently dropping the call)
+skill: ase-meta-mint
+args: "--type uuid gateway tool call probe"
+runs: 3
+minPass: 2
+timeoutSec: 180
+budget: { maxUsd: 1.00 }
+failHint: >-
+  raw tool-call markup leaked into the assistant text: the gateway did not
+  translate the model's native tool-call format into Anthropic "tool_use"
+  blocks. Report the matched marker (see the regex oracle above) to the
+  gateway operator and ask for an updated model adapter resp. native
+  function calling for this model. Verify independently with a direct
+  "/v1/messages" request carrying "tools" and "tool_choice", once with and
+  once without "stream": a content block of type "tool_use" is correct, a
+  "text" block containing the markup is the gateway bug.
+oracles:
+  - notErrored: true
+  - regex:
+      in: output
+      match:
+        - "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+      not:
+        - "DSML"
+        - "<｜tool▁call"
+        - "<tool_call>"
+        - "<\\|python_tag\\|>"
+        - "\\[TOOL_CALLS\\]"
+        - "<function_calls"

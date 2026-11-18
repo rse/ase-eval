@@ -16,7 +16,7 @@ import { caseDiscover }                    from "./ase-test-case.js"
 import type { TestCase }                   from "./ase-test-case.js"
 import { sandboxCreate, sandboxTeardown, harnessRoot, repoRoot } from "./ase-test-sandbox.js"
 import type { Sandbox }                    from "./ase-test-sandbox.js"
-import { runSession }                      from "./ase-test-session.js"
+import { runSession, liveAborts, sessionInterrupt } from "./ase-test-session.js"
 import type { SessionResult }              from "./ase-test-session.js"
 import { simulatorCreate }                 from "./ase-test-simulator.js"
 import { transcriptOpen, transcriptFinish } from "./ase-test-transcript.js"
@@ -24,8 +24,11 @@ import type { StageOutcome }               from "./ase-test-transcript.js"
 import { oraclesRun, changesetDiff, skillSpoke } from "./ase-test-oracle.js"
 import type { OracleResult }               from "./ase-test-oracle.js"
 import { describeCase }                    from "./ase-test-describe.js"
-import { reportRun, reportStage, reportSummary } from "./ase-test-report.js"
+import { reportRun, reportStage, reportSummary, summaryWrite, caseAggregate } from "./ase-test-report.js"
 import type { RunOutcome, CaseOutcome }    from "./ase-test-report.js"
+import { llmSpend }                        from "./ase-test-llm.js"
+import { pricingRate }                     from "./ase-test-pricing.js"
+import type { CostBasis }                  from "./ase-test-pricing.js"
 
 /*  the CLI of the skill test harness  */
 const program = new Command()
@@ -46,6 +49,8 @@ program
         "(default: the summed budgets of the scheduled cases + 10%)")
     .option("-b, --budget-factor <n>", "factor applied to the per-run budgets of all cases " +
         "(default: $ASE_TEST_BUDGET_FACTOR, else 1)")
+    .option("-t, --time-factor <n>", "factor applied to the timeouts of all cases and stages " +
+        "(default: $ASE_TEST_TIME_FACTOR, else 1)")
     .option("--allow-stale", "run even if the tool build is older than its sources", false)
     .option("-r, --results <dir>", "results directory (default: results/<timestamp>)")
     .option("--llm <file>", "env-file profile for an Anthropic-compatible " +
@@ -151,11 +156,27 @@ if (!Number.isFinite(budgetFactor) || budgetFactor <= 0) {
     console.error(chalk.red(`invalid --budget-factor resp. $ASE_TEST_BUDGET_FACTOR value: "${budgetValue}"`))
     process.exit(2)
 }
-for (const caze of cases) {
-    caze.maxUsd *= budgetFactor
-    for (const stage of caze.stages)
-        stage.maxUsd *= budgetFactor
+const timeValue  = opts.timeFactor ?? process.env.ASE_TEST_TIME_FACTOR ?? "1"
+const timeFactor = Number(timeValue)
+if (!Number.isFinite(timeFactor) || timeFactor <= 0) {
+    console.error(chalk.red(`invalid --time-factor resp. $ASE_TEST_TIME_FACTOR value: "${timeValue}"`))
+    process.exit(2)
 }
+for (const caze of cases) {
+    caze.maxUsd     *= budgetFactor
+    caze.timeoutSec  = Math.round(caze.timeoutSec * timeFactor)
+    for (const stage of caze.stages) {
+        stage.maxUsd     *= budgetFactor
+        stage.timeoutSec  = Math.round(stage.timeoutSec * timeFactor)
+    }
+}
+
+/*  preflight: a gateway model the agent tool cannot price is booked at its
+    fallback prices, unless the pricing table knows its real prices  */
+const testModel = process.env.ASE_TEST_MODEL ?? ""
+if (testModel !== "" && !/anthropic\.claude|^claude-/.test(testModel) && pricingRate(testModel) === null)
+    console.log(chalk.yellow(`⚠ model "${testModel}" has no entry in "etc/pricing.yaml" -- ` +
+        "its costs may be fallback-priced (\"unpriced\") and the budgets and ceiling unreliable"))
 
 /*  the global ceiling: an explicit --max-cost-usd scales with the per-run budgets,
     so the scaled budgets of a few slow or failed runs cannot alone exhaust an
@@ -171,6 +192,9 @@ console.log(chalk.dim(`cost ceiling: $${ceilingUsd.toFixed(2)} ` +
     stopped ("" while it did not, so the string doubles as the stop flag)  */
 let totalUsd = 0
 let aborted  = ""
+
+/*  the spend booked against the ceiling: the sessions plus the simulator and judge completions  */
+const spentUsd = (): number => totalUsd + llmSpend.usd
 
 /*  the booking of a session cost against the ceiling: an accurate cost as-is, a
     session which never produced an assistant message (e.g. a crash while loading
@@ -201,7 +225,7 @@ const executeAttempt = async (caze: TestCase, run: number, retried: boolean):
 Promise<{ outcome: RunOutcome, retry: boolean }> => {
     const started = Date.now()
     const outcome: RunOutcome = {
-        run, outcome: "fail", costUsd: 0, durationMs: 0,
+        run, outcome: "fail", costUsd: 0, bookedUsd: 0, costBasis: "", durationMs: 0,
         failure: "", artifacts: "", model: "", oracles: []
     }
     let retry   = false
@@ -233,7 +257,9 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
 
             /*  an inaccurate cost (timeout, stall, or crash before the final result
                 message) is only a lower bound, so book a plausible estimate globally  */
-            totalUsd += bookCost(result, stage.maxUsd)
+            const booked = bookCost(result, stage.maxUsd)
+            totalUsd          += booked
+            outcome.bookedUsd += booked
             if (!caze.staged)
                 continue
 
@@ -283,17 +309,30 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
             stopReason:   last.stopReason,
             apiStatus:    last.apiStatus,
             mcpFailed:    results.some((r) => r.mcpFailed),
-            stalled:      last.stalled
+            stalled:      last.stalled,
+            simFailed:    last.simFailed,
+            budgetHit:    last.budgetHit,
+            costBasis:    ([ "unpriced", "table", "sdk" ] as CostBasis[])
+                .find((basis) => results.some((r) => r.costBasis === basis)) ?? "sdk"
         }
-        outcome.costUsd = result.costUsd
-        outcome.model   = result.model
+        outcome.costUsd   = result.costUsd
+        outcome.costBasis = result.costBasis
+        outcome.model     = result.model
 
         /*  an infrastructure failure is a crash without any skill output -- a
             timeout is never one, as retrying the most expensive failure mode
             would double the spend of a merely too slow case  */
         const infra = (last.crashed && !last.timedOut && !skillSpoke(last.output)) || result.mcpFailed || last.stalled
+            || last.simFailed
         const api   = last.apiStatus !== null
-        if (infra || api) {
+        if (sessionInterrupt.on) {
+            /*  an interrupted run was never evaluated, so it counts as skipped  */
+            outcome.outcome = "skipped"
+            outcome.failure = "interrupted"
+            outcome.oracles = diagnostics
+            await transcriptFinish(transcript, caze, sandbox, result, "", diagnostics, false, stages)
+        }
+        else if (infra || api) {
             /*  an API refusal (e.g. HTTP 403 for an inaccessible model) is an
                 infrastructure error, too, but only a rate limit or a server
                 error is transient enough to be worth a paid retry  */
@@ -313,11 +352,25 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
             await transcriptFinish(transcript, caze, sandbox, result, "", diagnostics, false, stages)
         }
         else {
-            /*  an evaluation failure after the (expensive) session is a plain
-                case failure and never triggers the infrastructure retry  */
+            /*  an evaluation failure after the (expensive) session (e.g. a judge
+                timeout) is a harness-side error: the oracles alone are retried on
+                the still existing sandbox, and the session is never re-run  */
+            let diff = ""
             try {
-                const diff      = await changesetDiff(sandbox)
-                outcome.oracles = [ ...diagnostics, ...await oraclesRun(caze.oracles, caze, sandbox, result, diff) ]
+                diff = await changesetDiff(sandbox)
+                let oracles: OracleResult[] | null = null
+                for (let attempt = 1; oracles === null; attempt++) {
+                    try {
+                        oracles = await oraclesRun(caze.oracles, caze, sandbox, result, diff)
+                    }
+                    catch (err) {
+                        if (attempt >= 3)
+                            throw err
+                        console.log(chalk.yellow(`⚠ ${label}: evaluation failed ` +
+                            `(${err instanceof Error ? err.message : String(err)}) -- retrying the oracles`))
+                    }
+                }
+                outcome.oracles = [ ...diagnostics, ...oracles ]
 
                 /*  a skill re-invoking itself through the "Skill" tool (instead of
                     following its already loaded workflow) is diagnostic only  */
@@ -348,8 +401,11 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
                     outcome.oracles, outcome.outcome === "pass", stages)
             }
             catch (err) {
-                outcome.outcome = "fail"
+                outcome.outcome = "error"
                 outcome.failure = `evaluation failed: ${err instanceof Error ? err.message : String(err)}`
+                outcome.oracles = diagnostics
+                await transcriptFinish(transcript, caze, sandbox, result, diff, diagnostics, false, stages)
+                    .catch(() => { /*  keep the evaluation failure as the reported cause  */ })
             }
         }
     }
@@ -382,7 +438,7 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
     and only while the global ceiling still allows it  */
 const executeRun = async (caze: TestCase, run: number): Promise<RunOutcome> => {
     const first = await executeAttempt(caze, run, false)
-    if (!first.retry || aborted !== "" || totalUsd > ceilingUsd)
+    if (!first.retry || aborted !== "" || spentUsd() > ceilingUsd)
         return first.outcome
     console.log(chalk.yellow(`⚠ ${caze.name} run ${run}: ${first.outcome.failure} -- retrying once`))
     const second = await executeAttempt(caze, run, true)
@@ -391,52 +447,12 @@ const executeRun = async (caze: TestCase, run: number): Promise<RunOutcome> => {
         report the measured spend, a lower bound after a timeout or crash, while the
         global total books such runs pessimistically at their full budget, so both
         sums agree only when every cost was accurate)  */
-    second.outcome.costUsd += first.outcome.costUsd
+    second.outcome.costUsd   += first.outcome.costUsd
+    second.outcome.bookedUsd += first.outcome.bookedUsd
     return second.outcome
 }
 
-/*  the run pool: all runs of all cases, executed with bounded concurrency,
-    where the global cost ceiling stops the scheduling of further runs  */
-const work: { caze: TestCase, run: number, outcome: RunOutcome | null }[] = []
-for (const caze of cases)
-    for (let run = 1; run <= caze.runs; run++)
-        work.push({ caze, run, outcome: null })
-let next = 0
-const worker = async (): Promise<void> => {
-    while (next < work.length) {
-        const item = work[next++]
-        if (aborted !== "") {
-            item.outcome = {
-                run: item.run, outcome: "skipped", costUsd: 0, durationMs: 0,
-                failure: `skipped (${aborted})`, artifacts: "", model: "", oracles: []
-            }
-            continue
-        }
-        if (infraStreak >= 3) {
-            const pauseSec = Math.min(60 * 2 ** (infraStreak - 3), 300)
-            console.log(chalk.yellow(`⏸ ${infraStreak} consecutive infrastructure errors -- pausing ${pauseSec}s`))
-            await new Promise<void>((resolve) => setTimeout(resolve, pauseSec * 1000))
-        }
-        item.outcome = await executeRun(item.caze, item.run)
-        reportRun(item.caze.name, item.outcome, item.caze.failHint)
-        infraStreak = item.outcome.outcome === "error" ? infraStreak + 1 : 0
-        if (totalUsd > ceilingUsd && aborted === "")
-            aborted = `cost ceiling $${ceilingUsd.toFixed(2)} exceeded`
-    }
-}
-console.log(`running ${work.length} run(s) of ${cases.length} case(s) ` +
-    chalk.dim(`(jobs: ${jobs}, budget: $${ceilingUsd.toFixed(2)}` +
-        (process.env.ANTHROPIC_BASE_URL !== undefined ? `, endpoint: ${process.env.ANTHROPIC_BASE_URL}` : "") +
-        `, results: ${resultsDir})`))
-await Promise.all(Array.from({ length: Math.min(jobs, work.length) }, () => worker()))
-
-/*  aggregate the outcomes per case (pass@k) and report, with the run provenance
-    (models, endpoint, versions) as the comparison key of future summaries  */
-const outcomes: CaseOutcome[] = cases.map((caze) => {
-    const runs   = work.filter((item) => item.caze === caze).map((item) => item.outcome!)
-    const passed = runs.filter((run) => run.outcome === "pass").length
-    return { name: caze.name, skill: caze.skill, runs, minPass: caze.minPass, pass: passed >= caze.minPass }
-})
+/*  the run provenance (models, endpoint, versions) as the comparison key of future summaries  */
 const pluginCommit = await execa("git", [ "rev-parse", "HEAD" ], { cwd: repoRoot, reject: false })
     .then(({ stdout }) => (stdout ?? "").trim())
 const sdkVersion = await fs.promises.readFile(
@@ -450,12 +466,93 @@ const meta = {
     endpoint:     process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com",
     model:        process.env.ASE_TEST_MODEL ?? "(account default)",
     judgeModel:   process.env.ASE_TEST_JUDGE_MODEL ?? "claude-haiku-5-5",
-    simModel:     process.env.ASE_TEST_SIM_MODEL ?? "claude-haiku-5-5",
+    simModel:     process.env.ASE_TEST_SIM_FORCE ?? "(per case)",
     pluginCommit,
     pluginVersion,
     toolBuilt:    toolBuilt.toISOString(),
     budgetFactor: String(budgetFactor),
+    timeFactor:   String(timeFactor),
     sdkVersion,
     nodeVersion:  process.version
 }
-process.exit(reportSummary(resultsDir, outcomes, totalUsd, aborted, meta))
+
+/*  the run pool: all runs of all cases, executed with bounded concurrency,
+    where the global cost ceiling stops the scheduling of further runs, and
+    the runs are scheduled coverage-first (every first run before any second
+    one, each round cheapest case first), so a ceiling hit still leaves at
+    least one evaluated run for as many cases as possible  */
+const work: { caze: TestCase, run: number, outcome: RunOutcome | null }[] = []
+const rounds = Math.max(...cases.map((caze) => caze.runs))
+const cheapestFirst = [ ...cases ].sort((a, b) => a.maxUsd - b.maxUsd)
+for (let run = 1; run <= rounds; run++)
+    for (const caze of cheapestFirst)
+        if (run <= caze.runs)
+            work.push({ caze, run, outcome: null })
+
+/*  the aggregation of the outcomes per case (pass@k), where a run without an
+    outcome yet (still running or never scheduled) counts as skipped  */
+const pendingOutcome = (run: number, why: string): RunOutcome => ({
+    run, outcome: "skipped", costUsd: 0, bookedUsd: 0, costBasis: "", durationMs: 0,
+    failure: `skipped (${why})`, artifacts: "", model: "", oracles: []
+})
+const aggregate = (why: string): CaseOutcome[] => cases.map((caze) => {
+    const runs = work.filter((item) => item.caze === caze)
+        .sort((a, b) => a.run - b.run)
+        .map((item) => item.outcome ?? pendingOutcome(item.run, why))
+    return caseAggregate(caze.name, caze.skill, runs, caze.minPass)
+})
+
+/*  an interrupt (SIGINT/SIGTERM) stops the scheduling, aborts all live sessions,
+    and lets the workers tear down their sandboxes and the final summary be
+    written, while a second interrupt exits immediately  */
+let interrupts = 0
+const onInterrupt = (signal: string) => {
+    interrupts += 1
+    if (interrupts > 1) {
+        summaryWrite(resultsDir, aggregate("interrupted"), spentUsd(), llmSpend.usd, "interrupted", meta)
+        process.exit(130)
+    }
+    console.log(chalk.yellow(`⚠ ${signal} received -- aborting all live sessions ` +
+        "and tearing down (interrupt again to exit immediately)"))
+    aborted = "interrupted"
+    sessionInterrupt.on = true
+    for (const abort of liveAborts)
+        abort.abort()
+}
+process.on("SIGINT",  () => { onInterrupt("SIGINT") })
+process.on("SIGTERM", () => { onInterrupt("SIGTERM") })
+
+let next = 0
+const worker = async (): Promise<void> => {
+    while (next < work.length) {
+        const item = work[next++]
+        if (aborted !== "") {
+            item.outcome = pendingOutcome(item.run, aborted)
+            continue
+        }
+        if (infraStreak >= 3) {
+            const pauseSec = Math.min(60 * 2 ** (infraStreak - 3), 300)
+            console.log(chalk.yellow(`⏸ ${infraStreak} consecutive infrastructure errors -- pausing ${pauseSec}s`))
+            await new Promise<void>((resolve) => setTimeout(resolve, pauseSec * 1000))
+        }
+        item.outcome = await executeRun(item.caze, item.run)
+        reportRun(item.caze.name, item.outcome, item.caze.failHint)
+        infraStreak = item.outcome.outcome === "error" ? infraStreak + 1 : 0
+        if (spentUsd() > ceilingUsd && aborted === "")
+            aborted = `cost ceiling $${ceilingUsd.toFixed(2)} exceeded`
+
+        /*  the incremental summary, so even a killed harness leaves a partial one  */
+        summaryWrite(resultsDir, aggregate("not yet run"), spentUsd(), llmSpend.usd, aborted !== "" ? aborted : "incomplete", meta)
+    }
+}
+console.log(`running ${work.length} run(s) of ${cases.length} case(s) ` +
+    chalk.dim(`(jobs: ${jobs}, budget: $${ceilingUsd.toFixed(2)}` +
+        (timeFactor !== 1 ? `, time factor: ${timeFactor}` : "") +
+        (process.env.ANTHROPIC_BASE_URL !== undefined ? `, endpoint: ${process.env.ANTHROPIC_BASE_URL}` : "") +
+        `, results: ${resultsDir})`))
+await Promise.all(Array.from({ length: Math.min(jobs, work.length) }, () => worker()))
+
+/*  aggregate the outcomes per case (pass@k) and report  */
+const outcomes = aggregate(aborted !== "" ? aborted : "not run")
+const exitCode = reportSummary(resultsDir, outcomes, spentUsd(), llmSpend.usd, aborted, meta)
+process.exit(sessionInterrupt.on ? 130 : exitCode)

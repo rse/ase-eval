@@ -13,6 +13,14 @@ import type { Stage }                  from "./ase-test-case.js"
 import type { Sandbox }                from "./ase-test-sandbox.js"
 import { repoRoot }                    from "./ase-test-sandbox.js"
 import type { Simulator, DialogEntry, Question } from "./ase-test-simulator.js"
+import { SimulatorError }            from "./ase-test-simulator.js"
+import { pricingCost, pricingCallCost, pricingBudgetScale } from "./ase-test-pricing.js"
+import type { CostBasis, ModelUsage } from "./ase-test-pricing.js"
+
+/*  the abort controllers of all live sessions, so an interrupt of the
+    harness can abort them all and still tear down their sandboxes  */
+export const liveAborts = new Set<AbortController>()
+export const sessionInterrupt = { on: false }
 
 /*  the recorder callbacks of a session run  */
 export type SessionRecord = {
@@ -26,8 +34,10 @@ export type SessionRecord = {
     "turns" counts the result messages, i.e. the completed agentic turns, not
     the user turns of the "turns.maxTurns" case setting; "stopReason" and
     "apiStatus" are the subtype and HTTP status of an error result message,
-    "mcpFailed" flags a session whose ASE MCP server never connected, and
-    "stalled" one aborted by the watchdog after a too long silence)  */
+    "mcpFailed" flags a session whose ASE MCP server never connected,
+    "stalled" one aborted by the watchdog after a too long silence, "simFailed"
+    one whose simulator failed, "budgetHit" one aborted by the table-priced
+    budget watchdog, and "costBasis" tells how "costUsd" was priced)  */
 export type SessionResult = {
     messages:     Record<string, any>[]
     output:       string[]
@@ -46,6 +56,9 @@ export type SessionResult = {
     stopReason:   string
     apiStatus:    number | null
     mcpFailed:    boolean
+    simFailed:    boolean
+    budgetHit:    boolean
+    costBasis:    CostBasis
 }
 
 /*  render the invocation of the skill <skill> with the arguments <args>, adding the
@@ -65,7 +78,7 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
     const result: SessionResult = {
         messages: [], output: [], lastText: "", dialog: [], sessionId: "", model: "",
         costUsd: 0, costAccurate: true, turns: 0, errored: false, crashed: false, timedOut: false, stalled: false, failure: "",
-        stopReason: "", apiStatus: null, mcpFailed: false
+        stopReason: "", apiStatus: null, mcpFailed: false, simFailed: false, budgetHit: false, costBasis: "sdk"
     }
     const prompt = stage.skill !== "" ? skillPrompt(stage.skill, stage.args) : stage.prompt
 
@@ -97,15 +110,24 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
 
     /*  the wall-clock timeout of the whole run (the "finished" flag keeps a timer
         firing in the same tick the session completed from marking a successful,
-        fully paid run as timed out and provoking a pointless paid retry)  */
+        fully paid run as timed out and provoking a pointless paid retry), whose
+        deadline is pushed out by the time the simulator spends composing  */
     let finished = false
     const abort  = new AbortController()
-    const timer  = setTimeout(() => {
-        if (finished)
-            return
-        result.timedOut = true
-        abort.abort()
-    }, stage.timeoutSec * 1000)
+    liveAborts.add(abort)
+    let deadline = Date.now() + stage.timeoutSec * 1000
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const deadlineArm = () => {
+        if (timer !== null)
+            clearTimeout(timer)
+        timer = setTimeout(() => {
+            if (finished)
+                return
+            result.timedOut = true
+            abort.abort()
+        }, Math.max(0, deadline - Date.now()))
+    }
+    deadlineArm()
 
     /*  the stall watchdog: abort a session without any SDK message (incl. the
         streamed partial messages) for "stallSec", e.g. a hanging gateway stream,
@@ -129,6 +151,44 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         }, stallSec * 1000)
     }
 
+    /*  run a simulator step with both the deadline and the stall watchdog paused,
+        as the latency of the simulator is never the tested session's fault  */
+    const simulate = async <T>(step: () => Promise<T>): Promise<T> => {
+        const begin = Date.now()
+        stallDisarm()
+        if (timer !== null)
+            clearTimeout(timer)
+        try {
+            return await step()
+        }
+        finally {
+            deadline += Date.now() - begin
+            if (!finished) {
+                deadlineArm()
+                stallArm()
+            }
+        }
+    }
+
+    /*  the live budget watchdog of a table-priced model, whose SDK budget cap is
+        scaled up to a mere backstop: the per-call usages (keyed by message id, as
+        the content blocks of one call arrive as several messages) are priced from
+        the table, and the session is aborted once they exceed the stage budget  */
+    const callCosts = new Map<string, number>()
+    let liveUsd     = 0
+    const budgetWatch = (msg: Record<string, any>) => {
+        const usage = msg.message?.usage
+        const cost  = usage !== undefined ? pricingCallCost(String(msg.message?.model ?? ""), usage) : null
+        if (cost === null)
+            return
+        callCosts.set(String(msg.message?.id ?? callCosts.size), cost)
+        liveUsd = [ ...callCosts.values() ].reduce((sum, c) => sum + c, 0)
+        if (liveUsd > stage.maxUsd && !result.budgetHit) {
+            result.budgetHit = true
+            abort.abort()
+        }
+    }
+
     /*  in plan mode, an "ExitPlanMode" call is auto-approved (the simulated user
         accepts every plan), and right after it the session is switched over to
         "acceptEdits" (outside the permission round-trip, on the next message),
@@ -148,7 +208,7 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         permissionMode:  stage.permissionMode,
         maxTurns:        stage.maxAgentTurns ?? (simulator !== null ? stage.turns!.maxTurns * 4 : 32),
         includePartialMessages: true,
-        maxBudgetUsd:    stage.maxUsd,
+        maxBudgetUsd:    stage.maxUsd * pricingBudgetScale(process.env.ASE_TEST_MODEL ?? ""),
         abortController: abort,
         stderr:          record.onStderr,
         ...(process.env.ASE_TEST_MODEL !== undefined ? { model: process.env.ASE_TEST_MODEL } : {}),
@@ -164,9 +224,17 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
                     planApproved = true
                 if (toolName === "AskUserQuestion" && simulator !== null) {
                     const questions = (toolInput as { questions?: Question[] }).questions ?? []
-                    stallDisarm()
-                    const answers   = await simulator.answers(questions)
-                    stallArm()
+                    let answers: Record<string, string>
+                    try {
+                        answers = await simulate(() => simulator.answers(questions))
+                    }
+                    catch (err) {
+                        /*  a failed simulator aborts the session as an infrastructure error  */
+                        result.simFailed = true
+                        result.failure   = err instanceof Error ? err.message : String(err)
+                        abort.abort()
+                        return { behavior: "deny", message: "simulated user unavailable" }
+                    }
                     for (const question of questions)
                         result.dialog.push(
                             { role: "assistant", text: question.question },
@@ -220,6 +288,7 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
                     }
             }
             else if (msg.type === "assistant") {
+                budgetWatch(msg as Record<string, any>)
                 const blocks = Array.isArray(msg.message?.content) ? msg.message.content : []
                 for (const block of blocks)
                     if (block.type === "text" && block.text.trim() !== "") {
@@ -234,7 +303,10 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
                 /*  the cost is cumulative, so the latest value replaces the previous one,
                     but a crash result may carry a zeroed cost which must never erase the
                     already accumulated spend  */
-                result.costUsd = Math.max(result.costUsd, msg.total_cost_usd ?? 0)
+                const usage = (msg as { modelUsage?: Record<string, ModelUsage> }).modelUsage
+                const cost  = usage !== undefined ? pricingCost(usage) : { usd: msg.total_cost_usd ?? 0, basis: "sdk" as const }
+                result.costUsd   = Math.max(result.costUsd, cost.usd)
+                result.costBasis = cost.basis
                 if (msg.is_error) {
                     /*  an API error carries the subtype "success", so prefer its terminal reason  */
                     const extra  = msg as { api_error_status?: number | null, terminal_reason?: string, result?: unknown }
@@ -251,9 +323,7 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
                 else if (simulator === null || userTurns >= stage.turns!.maxTurns)
                     push(null)
                 else {
-                    stallDisarm()
-                    const turn = await simulator.nextTurn(result.dialog)
-                    stallArm()
+                    const turn = await simulate(() => simulator.nextTurn(result.dialog))
                     if (turn === null)
                         push(null)
                     else {
@@ -270,7 +340,22 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
             overrun or an API refusal) is only its consequence, not a crash, and
             its misleading stderr must never replace the reported real cause  */
         result.errored = true
-        if (result.stopReason === "" || result.timedOut || result.stalled) {
+        if (sessionInterrupt.on) {
+            result.costAccurate = false
+            result.failure      = "interrupted"
+        }
+        else if (err instanceof SimulatorError || result.simFailed) {
+            result.simFailed    = true
+            result.costAccurate = false
+            if (result.failure === "" || err instanceof SimulatorError)
+                result.failure = err instanceof SimulatorError ? err.message : result.failure
+        }
+        else if (result.budgetHit) {
+            result.stopReason = "error_max_budget_usd"
+            result.failure    = `session error: error_max_budget_usd (table-priced $${liveUsd.toFixed(2)} ` +
+                `exceeds $${stage.maxUsd.toFixed(2)})`
+        }
+        else if (result.stopReason === "" || result.timedOut || result.stalled) {
             result.crashed      = !result.timedOut && !result.stalled
             result.costAccurate = false
             result.failure      = result.timedOut ? `timeout after ${stage.timeoutSec}s` :
@@ -279,8 +364,18 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         }
     }
     finally {
-        clearTimeout(timer)
+        finished = true
+        if (timer !== null)
+            clearTimeout(timer)
         stallDisarm()
+        liveAborts.delete(abort)
+    }
+
+    /*  the priced per-call usages bound the cost of a session cut short
+        before its final result message from below  */
+    if (liveUsd > result.costUsd) {
+        result.costUsd   = liveUsd
+        result.costBasis = "table"
     }
     if (result.timedOut) {
         result.errored      = true

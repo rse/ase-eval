@@ -21,6 +21,7 @@ via `npm start test -- <options>` and the `run_*.sh` scripts.
 | `-K, --keep-failed`      | keep the sandboxes of failed runs                                    |
 | `-m, --max-cost-usd <n>` | global cost ceiling in USD (default: summed budgets of the scheduled cases + 10%) |
 | `-b, --budget-factor <n>` | factor on all per-run budgets (default: `$ASE_TEST_BUDGET_FACTOR`, else `1`) |
+| `-t, --time-factor <n>`  | factor on all case and stage timeouts (default: `$ASE_TEST_TIME_FACTOR`, else `1`) |
 | `--allow-stale`          | run even if `tool/dst` is older than `tool/src`                      |
 | `-r, --results <dir>`    | results directory (default: `results/<timestamp>`)                   |
 | `-C, --cases-dir <dir>`  | cases directory (default: `cases`; e.g. `uplift` for the uplift benchmark) |
@@ -28,7 +29,7 @@ via `npm start test -- <options>` and the `run_*.sh` scripts.
 
 `run_all_tests.sh` additionally takes `--force-model <model>`, which
 forces the session, sub-agent, judge, and simulator models onto one
-model (via `ASE_TEST_FORCE_MODEL`, `ASE_TEST_MODEL`,
+model (via `ASE_TEST_SIM_FORCE`, `ASE_TEST_MODEL`,
 `ASE_TEST_JUDGE_MODEL`, `ASE_TEST_SIM_MODEL`, and the `ANTHROPIC_*MODEL`
 variables). `run_all_tests_local.sh` does not take it, so combine both
 via `./run_all_tests.sh --force-model <model> --llm=<profile>`.
@@ -58,7 +59,8 @@ see `docs/review/README.md`), `clean`, and `distclean`.
 |------|-------------------------------------------------------------------------------------------|
 | `0`  | all cases passed                                                                          |
 | `1`  | a case failed its pass@k threshold, or no case matched the globs                          |
-| `2`  | cost ceiling hit (wins over `1`), an infrastructure error or skipped run, or a preflight error (missing profile, unbuilt or stale tool, no credentials, no `python3` for a `suite` oracle, invalid `--jobs`/`--max-cost-usd`/`--budget-factor`) |
+| `2`  | cost ceiling hit (wins over `1`), an incomplete case, an infrastructure error or skipped run, or a preflight error (missing profile, unbuilt or stale tool, no credentials, no `python3` for a `suite` oracle, invalid `--jobs`/`--max-cost-usd`/`--budget-factor`/`--time-factor`) |
+| `130` | interrupted (SIGINT/SIGTERM): live sessions aborted, sandboxes torn down, partial `summary.json` written |
 
 ## Third-Party Gateways
 
@@ -85,11 +87,13 @@ and simulator) and per-case `turns.model` reach the gateway as-is. So
 either alias the `claude-*` names onto the local model in the gateway
 (in LiteLLM: several `model_name` entries pointing to one deployment),
 or set `ASE_TEST_MODEL`, `ASE_TEST_JUDGE_MODEL`, and `ASE_TEST_SIM_MODEL`
-in the profile (`ASE_TEST_FORCE_MODEL` even overrides `turns.model`).
+in the profile (`ASE_TEST_SIM_FORCE` even overrides `turns.model`).
 
 Caveats: a full local run can take more than an hour; the reported
 costs (and with them `budget.maxUsd` and `--max-cost-usd`) are
-meaningless for models unknown to the agent tool; a small local judge
+fallback-priced for models unknown to the agent tool (`costBasis:
+"unpriced"` in the summary), unless `etc/pricing.yaml` lists their real
+token prices (`costBasis: "table"`, see "Budget and Retries"); a small local judge
 is markedly weaker (consider a stronger `ASE_TEST_JUDGE_MODEL`). The
 startup line prints the active `endpoint:`. `LOCAL_SETUP.md` shows one
 complete example setup.
@@ -169,7 +173,7 @@ review cases live in `cases/review/<name>/` (see `docs/review/README.md`).
 | `fixture.lifecycle`                       | `solo`             | lifecycle of the seeded task store                            |
 | `turns.maxTurns`                          | `16`               | *user* turns; the agentic turn cap is 4×, resp. 32 single-shot |
 | `maxAgentTurns`                           | see `turns.maxTurns` | overrides the agentic turn cap (also per stage)             |
-| `turns.model`                             | `claude-haiku-5-5` | `llm` simulator only; precedence: `$ASE_TEST_FORCE_MODEL`, `turns.model`, `$ASE_TEST_SIM_MODEL`, default |
+| `turns.model`                             | `claude-haiku-5-5` | `llm` simulator only; precedence: `$ASE_TEST_SIM_FORCE`, `turns.model`, `$ASE_TEST_SIM_MODEL`, default |
 | `in` (`regex`, `textMetric`, `similar`, `review`) | `lastMessage` |                                                        |
 | `disallowedTools`                         | `[]`               | a single-shot session also always disallows `AskUserQuestion` |
 | `regex.flags`                             | `m`                | a JavaScript regex: no inline `(?i)`                          |
@@ -215,6 +219,25 @@ sessions use the automatic permission mode of the agent tool.
 -   `--budget-factor` scales all budgets, e.g. for gateway models
     without prompt caching; `launch_tests.sh` sets
     `ASE_TEST_BUDGET_FACTOR=3` for every non-Anthropic model.
+-   A model the agent tool cannot price (`costBasis: "unknown"` in its
+    result messages) is booked at fallback prices ($4/M input, $20/M
+    output). With an entry in `etc/pricing.yaml`, the harness recomputes
+    its cost from the token usage, scales the SDK budget cap up to a
+    mere backstop, and aborts the session itself once the table-priced
+    usage exceeds `budget.maxUsd`. A model without an entry is flagged
+    at startup and as `unpriced` per run.
+-   `--time-factor` scales all timeouts; `launch_tests.sh` sets
+    `ASE_TEST_TIME_FACTOR=2` for every non-Anthropic model. The time the
+    simulator spends composing an answer does not count against the
+    timeout (nor the stall watchdog).
+-   Runs are scheduled coverage-first: every first run of all cases
+    (cheapest case first) before any second run, so a hit ceiling still
+    leaves an evaluated run of as many cases as possible. A case which
+    missed `minPass` only for lack of evaluated runs (skipped or errored)
+    is reported as `INCOMPLETE`, not `FAIL`.
+-   The simulator and judge completions are booked against the ceiling,
+    too (`sideUsd` in the summary). A run whose booked cost differs from
+    its measured one shows both.
 -   The global cost ceiling stops scheduling further runs (in-flight
     runs complete, the rest is `skipped`). It defaults to the summed
     (already `--budget-factor`-scaled) budgets of the scheduled cases
@@ -240,7 +263,16 @@ sessions use the automatic permission mode of the agent tool.
     attempts. A session whose ASE MCP server failed to connect is an
     infrastructure error and retried, too. An API refusal (e.g. HTTP 403
     for an inaccessible model) is an infrastructure error, retried only
-    for HTTP 429 and 5xx.
+    for HTTP 429 and 5xx. A failed simulator (e.g. a completion timeout)
+    is an infrastructure error and retried, too. A failed evaluation
+    (e.g. a judge timeout) retries the oracles alone, up to 3 attempts,
+    and then reports the run as an infrastructure `error`, never as a
+    model failure.
+-   `summary.json` is rewritten after every finished run (`aborted:
+    "incomplete"` until the end), and an interrupt (SIGINT/SIGTERM)
+    aborts all live sessions, tears down their sandboxes, and writes the
+    final summary with the unfinished runs as `skipped`; a second
+    interrupt exits immediately.
 
 ## Sandboxing
 
@@ -294,7 +326,13 @@ then a checkbox list of the models of the live `claude` model listing
 selected cases with every selected model: one runner process per model
 in parallel, each into its own `results/<timestamp>-<model>/` directory
 (child output in its `launcher.log`), with a live progress line per
-model. The explicit case selection bypasses the probe gate. Extra
+model. The explicit case selection bypasses the probe gate. The
+session and its sub-agents run on the selected model, while the judge
+and the simulator stay on one fixed reference model for all models
+(`--ref-model <id>`, default `$ASE_TEST_REF_MODEL`, else
+`eu.anthropic.claude-opus-5-5`), so no model grades itself or plays its
+own user. A Ctrl-C reaches every runner, and the launcher waits for
+their teardown and still refreshes the comparison. Extra
 options (e.g. `--jobs=6`, `-K`, `--max-cost-usd=50`) are passed through
 to every runner; a `--max-cost-usd` ceiling therefore applies per model
 runner, not to the whole matrix. Afterwards the comparison report is refreshed (see
@@ -306,7 +344,7 @@ case globs), `--models <ids>` (comma-separated model ids, taken as given
 -- use resolved ids, not UI aliases), and `--yes` (skip the cost
 confirmation). With all three given, no terminal interaction is needed.
 After the final PASS/FAIL lines the launcher prints a `repeat:` line:
-one copyable command (`./launch_tests.sh --tests ... --models ... --yes`
+one copyable command (`./launch_tests.sh --tests ... --models ... --ref-model ... --yes`
 plus the pass-through options) that repeats the exact run.
 
 ## Comparing Runs

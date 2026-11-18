@@ -17,6 +17,8 @@ export type RunOutcome = {
     run:        number
     outcome:    "pass" | "fail" | "error" | "skipped"
     costUsd:    number
+    bookedUsd:  number
+    costBasis:  string
     durationMs: number
     failure:    string
     artifacts:  string
@@ -24,13 +26,24 @@ export type RunOutcome = {
     oracles:    OracleResult[]
 }
 
-/*  the aggregated outcome of one case  */
+/*  the aggregated outcome of one case, where an "incomplete" case missed
+    "minPass" only for lack of evaluated runs (skipped or errored ones)  */
 export type CaseOutcome = {
-    name:    string
-    skill:   string
-    runs:    RunOutcome[]
-    minPass: number
-    pass:    boolean
+    name:       string
+    skill:      string
+    runs:       RunOutcome[]
+    minPass:    number
+    pass:       boolean
+    incomplete: boolean
+}
+
+/*  aggregate the runs of one case (pass@k), where the missing runs of a
+    not passed case could still have reached "minPass" resp. could not  */
+export const caseAggregate = (name: string, skill: string, runs: RunOutcome[], minPass: number): CaseOutcome => {
+    const passed  = runs.filter((run) => run.outcome === "pass").length
+    const missing = runs.filter((run) => run.outcome === "skipped" || run.outcome === "error").length
+    const pass    = passed >= minPass
+    return { name, skill, runs, minPass, pass, incomplete: !pass && passed + missing >= minPass }
 }
 
 /*  the end of one stage of a staged run, for its live console progress  */
@@ -66,7 +79,10 @@ export const reportRun = (name: string, outcome: RunOutcome, failHint = ""): voi
     const mark = outcome.outcome === "pass" ? chalk.green("✔") :
         outcome.outcome === "fail"    ? chalk.red("✘") :
             outcome.outcome === "skipped" ? chalk.yellow("−") : chalk.red("⚠")
-    const info = `(${prettyMs(outcome.durationMs)}, $${outcome.costUsd.toFixed(4)}` +
+    const booked = Math.abs(outcome.bookedUsd - outcome.costUsd) >= 0.00005 ?
+        ` (booked $${outcome.bookedUsd.toFixed(4)})` : ""
+    const basis  = outcome.costBasis !== "" && outcome.costBasis !== "sdk" ? ` ${outcome.costBasis}` : ""
+    const info = `(${prettyMs(outcome.durationMs)}, $${outcome.costUsd.toFixed(4)}${booked}${basis}` +
         `${outcome.model !== "" ? `, ${outcome.model}` : ""})`
     console.log(`${mark} ${name} run ${outcome.run} ${chalk.dim(info)}`)
     for (const oracle of outcome.oracles)
@@ -84,35 +100,26 @@ export const reportRun = (name: string, outcome: RunOutcome, failHint = ""): voi
         console.log(`    ${chalk.dim(`artifacts: ${outcome.artifacts}`)}`)
 }
 
-/*  print the console summary and write the "summary.json", resolving to the exit code  */
-export const reportSummary = (resultsDir: string, cases: CaseOutcome[],
-    totalUsd: number, aborted: string, meta: Record<string, string>): number => {
-    console.log("")
-    if ((meta.model ?? "") !== "")
-        console.log(chalk.dim(`model: ${meta.model}`))
-    for (const caze of cases) {
-        const passed = caze.runs.filter((run) => run.outcome === "pass").length
-        const mark   = caze.pass ? chalk.green("PASS") : chalk.red("FAIL")
-        console.log(`${mark} ${caze.name} ` +
-            chalk.dim(`(${passed}/${caze.runs.length} runs passed, ${caze.minPass} required)`))
-    }
-    const failed  = cases.filter((caze) => !caze.pass).length
-    const errored = cases.some((caze) => caze.runs.some((run) => run.outcome === "error" || run.outcome === "skipped"))
-    console.log("")
-    console.log(`${cases.length - failed}/${cases.length} cases passed, ` +
-        `total cost: $${totalUsd.toFixed(2)}${aborted !== "" ? chalk.red(` (aborted: ${aborted})`) : ""}`)
+/*  write the "summary.json" (also incrementally during the run, so even a killed
+    harness leaves a partial summary behind)  */
+export const summaryWrite = (resultsDir: string, cases: CaseOutcome[],
+    totalUsd: number, sideUsd: number, aborted: string, meta: Record<string, string>): void => {
     fs.mkdirSync(resultsDir, { recursive: true })
-    fs.writeFileSync(path.join(resultsDir, "summary.json"), JSON.stringify({
+    const file = path.join(resultsDir, "summary.json")
+    fs.writeFileSync(`${file}.tmp`, JSON.stringify({
         meta,
         cases: cases.map((caze) => ({
-            name:    caze.name,
-            skill:   caze.skill,
-            pass:    caze.pass,
-            minPass: caze.minPass,
-            runs:    caze.runs.map((run) => ({
+            name:       caze.name,
+            skill:      caze.skill,
+            pass:       caze.pass,
+            incomplete: caze.incomplete,
+            minPass:    caze.minPass,
+            runs:       caze.runs.map((run) => ({
                 run:        run.run,
                 outcome:    run.outcome,
                 costUsd:    run.costUsd,
+                bookedUsd:  run.bookedUsd,
+                costBasis:  run.costBasis,
                 durationMs: run.durationMs,
                 failure:    run.failure,
                 artifacts:  run.artifacts,
@@ -121,11 +128,36 @@ export const reportSummary = (resultsDir: string, cases: CaseOutcome[],
             }))
         })),
         totalUsd,
+        sideUsd,
         aborted
     }, null, 4), "utf8")
+    fs.renameSync(`${file}.tmp`, file)
+}
+
+/*  print the console summary and write the final "summary.json", resolving to the exit code  */
+export const reportSummary = (resultsDir: string, cases: CaseOutcome[],
+    totalUsd: number, sideUsd: number, aborted: string, meta: Record<string, string>): number => {
+    console.log("")
+    if ((meta.model ?? "") !== "")
+        console.log(chalk.dim(`model: ${meta.model}`))
+    for (const caze of cases) {
+        const passed = caze.runs.filter((run) => run.outcome === "pass").length
+        const mark   = caze.pass ? chalk.green("PASS") : caze.incomplete ? chalk.yellow("INCOMPLETE") : chalk.red("FAIL")
+        console.log(`${mark} ${caze.name} ` +
+            chalk.dim(`(${passed}/${caze.runs.length} runs passed, ${caze.minPass} required)`))
+    }
+    const passed     = cases.filter((caze) => caze.pass).length
+    const incomplete = cases.filter((caze) => caze.incomplete).length
+    const failed     = cases.length - passed - incomplete
+    const errored    = cases.some((caze) => caze.runs.some((run) => run.outcome === "error" || run.outcome === "skipped"))
+    console.log("")
+    console.log(`${passed}/${cases.length} cases passed, ${failed} failed, ${incomplete} incomplete, ` +
+        `total cost: $${totalUsd.toFixed(2)} (incl. $${sideUsd.toFixed(2)} simulator/judge)` +
+        `${aborted !== "" ? chalk.red(` (aborted: ${aborted})`) : ""}`)
+    summaryWrite(resultsDir, cases, totalUsd, sideUsd, aborted, meta)
     console.log(chalk.dim(`summary: ${path.join(resultsDir, "summary.json")}`))
 
-    /*  the exit code precedence: a hit cost ceiling (2) beats a failed case (1),
-        which beats an infrastructure error or skipped run of a passed case (2)  */
-    return aborted !== "" ? 2 : (failed > 0 ? 1 : (errored ? 2 : 0))
+    /*  the exit code precedence: a hit cost ceiling or an interrupt (2) beats a failed
+        case (1), which beats an incomplete case, an infrastructure error, or a skipped run (2)  */
+    return aborted !== "" ? 2 : (failed > 0 ? 1 : (errored || incomplete > 0 ? 2 : 0))
 }

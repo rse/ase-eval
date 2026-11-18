@@ -69,21 +69,26 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    W["Worker takes next run"] --> AB{"Ceiling hit?"}
+    Q["Work list: all run 1s, then all run 2s, ...<br/>(cheapest case first per round)"] --> W
+    W["Worker takes next run"] --> AB{"Ceiling hit<br/>or interrupted?"}
     AB -->|yes| SK["Mark skipped"]
     AB -->|no| AT["Attempt 1"]
-    AT --> IN{"Infrastructure error?<br/>(crash without skill output,<br/>or the attempt threw)"}
+    AT --> IN{"Infrastructure error?<br/>(crash without skill output, stall,<br/>simulator failure, or the attempt threw)"}
     IN -->|no| DONE["Report run"]
     IN -->|yes| CE{"Ceiling hit?"}
     CE -->|yes| DONE
     CE -->|no| AT2["Attempt 2 into run-n-retry/<br/>(costs of both summed)"] --> DONE
-    DONE --> BK["Book cost: measured,<br/>or full budget if inaccurate"]
-    BK --> CH{"Total above --max-cost-usd?"}
-    CH -->|yes| STOP["Stop scheduling"]
-    CH -->|no| W
+    DONE --> BK["Book cost: measured (table-priced if unpriced),<br/>or an estimate if inaccurate"]
+    BK --> CH{"Sessions + simulator/judge<br/>above the ceiling?"}
+    CH --> SW["Rewrite summary.json"]
+    SW -->|ceiling hit| STOP["Stop scheduling"]
+    SW -->|else| W
 ```
 
 A timeout is never retried, as it is the most expensive failure mode.
+A failed evaluation (e.g. a judge timeout) retries only the oracles and
+ends as an infrastructure `error`. A SIGINT/SIGTERM aborts all live
+sessions, tears down their sandboxes, and writes the final summary.
 
 ## 4. One Run (Attempt)
 

@@ -33,7 +33,7 @@ set -- ${args[@]+"${args[@]}"}
 
 #   force all models onto the given one
 if [[ -n "$forceModel" ]]; then
-    for var in ASE_TEST_FORCE_MODEL ASE_TEST_MODEL ASE_TEST_JUDGE_MODEL ASE_TEST_SIM_MODEL \
+    for var in ASE_TEST_SIM_FORCE ASE_TEST_MODEL ASE_TEST_JUDGE_MODEL ASE_TEST_SIM_MODEL \
         ANTHROPIC_MODEL ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL; do
         export "$var=$forceModel"
     done

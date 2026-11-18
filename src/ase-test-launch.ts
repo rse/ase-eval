@@ -100,9 +100,11 @@ const pick = (title: string, items: PickItem[], selectAll: boolean): Promise<num
 /*  the launcher's own command line: the test and model selection and the
     confirmation, split off from the options passed through to every runner
     (exported pure, so the splitting is testable offline)  */
-export type LaunchArgs = { tests: string[] | null, models: string[] | null, yes: boolean, passThrough: string[] }
+export type LaunchArgs = {
+    tests: string[] | null, models: string[] | null, refModel: string | null, yes: boolean, passThrough: string[]
+}
 export const parseArgv = (argv: string[]): LaunchArgs => {
-    const result: LaunchArgs = { tests: null, models: null, yes: false, passThrough: [] }
+    const result: LaunchArgs = { tests: null, models: null, refModel: null, yes: false, passThrough: [] }
     const items = (name: string, value: string | undefined): string[] => {
         const list = (value ?? "").split(",").map((s) => s.trim()).filter((s) => s !== "")
         if (list.length === 0)
@@ -112,7 +114,14 @@ export const parseArgv = (argv: string[]): LaunchArgs => {
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i]
         const opt = /^(--tests|--models)(?:=(.*))?$/.exec(arg)
-        if (opt !== null) {
+        const ref = /^--ref-model(?:=(.*))?$/.exec(arg)
+        if (ref !== null) {
+            const value = ref[1] !== undefined ? ref[1] : argv[++i]
+            if ((value ?? "") === "")
+                throw new Error("option --ref-model needs a model id")
+            result.refModel = value
+        }
+        else if (opt !== null) {
             const value = opt[2] !== undefined ? opt[2] : argv[++i]
             if (opt[1] === "--tests")
                 result.tests  = items(opt[1], value)
@@ -129,13 +138,18 @@ export const parseArgv = (argv: string[]): LaunchArgs => {
 
 /*  the command line that repeats this exact run (exported pure for testing);
     a glob character gets quoted, so the shell passes it through verbatim  */
-export const repeatLine = (tests: string[], models: string[], passThrough: string[]): string => {
+export const repeatLine = (tests: string[], models: string[], refModel: string, passThrough: string[]): string => {
     const quote = (s: string) => /^[A-Za-z0-9._,=/@:-]+$/.test(s) ? s : `'${s.replace(/'/g, "'\\''")}'`
     return [ "./launch_tests.sh",
-        "--tests",  quote(tests.join(",")),
-        "--models", quote(models.join(",")),
+        "--tests",     quote(tests.join(",")),
+        "--models",    quote(models.join(",")),
+        "--ref-model", quote(refModel),
         "--yes", ...passThrough.map(quote) ].join(" ")
 }
+
+/*  the default reference model of the judge and the simulator, which stay fixed
+    across all tested models, so no model grades itself or plays its own user  */
+const REF_MODEL_DEFAULT = "eu.anthropic.claude-opus-5-5"
 
 /*  fetch the available models from the agent tool via the "initialize"
     control request of its stream-json interface  */
@@ -249,9 +263,11 @@ const main = async (): Promise<void> => {
     }
 
     /*  step 3: confirm the matrix, as every run burns real tokens  */
+    const refModel = opts.refModel ?? process.env.ASE_TEST_REF_MODEL ?? REF_MODEL_DEFAULT
     const runsPerModel = selectedCases.reduce((sum, caze) => sum + caze.runs, 0)
     console.log(`\n${selectedCases.length} test(s) x ${models.length} model(s), ` +
-        `${runsPerModel} run(s) per model, ${runsPerModel * models.length} run(s) in total.`)
+        `${runsPerModel} run(s) per model, ${runsPerModel * models.length} run(s) in total, ` +
+        `judge and simulator: ${refModel}.`)
     console.log(chalk.yellow("WARNING: every run burns real tokens and costs actual money."))
     if (!opts.yes) {
         const answer = await new Promise<string>((resolve) => {
@@ -268,6 +284,7 @@ const main = async (): Promise<void> => {
     const globs     = selectedCases.map((caze) => caze.name)
     const runners: Runner[] = []
     const children: Promise<void>[] = []
+    const childProcs: ReturnType<typeof execa>[] = []
     for (const model of models) {
         const slug       = model.replace(/[^A-Za-z0-9._-]+/g, "-")
         const resultsDir = path.join(harnessRoot, "results", `${timestamp}-${slug}`)
@@ -280,25 +297,30 @@ const main = async (): Promise<void> => {
         runners.push(runner)
         const env: Record<string, string> = { ...process.env as Record<string, string> }
         const forced = [
-            "ASE_TEST_FORCE_MODEL", "ASE_TEST_MODEL",
-            "ASE_TEST_JUDGE_MODEL", "ASE_TEST_SIM_MODEL", "ANTHROPIC_MODEL",
+            "ASE_TEST_MODEL", "ANTHROPIC_MODEL",
             "ANTHROPIC_DEFAULT_OPUS_MODEL", "ANTHROPIC_DEFAULT_SONNET_MODEL",
             "ANTHROPIC_DEFAULT_HAIKU_MODEL"
         ]
         for (const name of forced)
             env[name] = model
+        for (const name of [ "ASE_TEST_JUDGE_MODEL", "ASE_TEST_SIM_MODEL", "ASE_TEST_SIM_FORCE" ])
+            env[name] = refModel
 
-        /*  gateway models get no prompt caching, so their budgets are scaled up  */
+        /*  gateway models get no prompt caching and are slower, so their budgets
+            and timeouts are scaled up  */
         if (env.ASE_TEST_BUDGET_FACTOR === undefined && !/anthropic\.claude/.test(model))
             env.ASE_TEST_BUDGET_FACTOR = "3"
+        if (env.ASE_TEST_TIME_FACTOR === undefined && !/anthropic\.claude/.test(model))
+            env.ASE_TEST_TIME_FACTOR = "2"
         const argv  = [ "--import", "tsx", "src/ase-test.ts", ...globs,
             `--results=${resultsDir}`, ...opts.passThrough ]
         const child = execa("node", argv, { cwd: harnessRoot, env, reject: false, all: true, buffer: false })
+        childProcs.push(child)
         const input = readline.createInterface({ input: child.all! })
         input.on("line", (raw) => {
             log.write(`${raw}\n`)
             const line = raw.replace(ansi, "")
-            const run  = /^([✔✘−⚠]) \S+ run \d+ /.exec(line)
+            const run  = /^([✔✘−⚠]) \S+ run \d+ \(/.exec(line)
             if (run !== null) {
                 runner.done   += 1
                 runner.passed += run[1] === "✔" ? 1 : 0
@@ -326,6 +348,14 @@ const main = async (): Promise<void> => {
         process.stdout.write(out.join("\n") + "\n")
         lines = out.length
     }
+    /*  an interrupt from the terminal reaches the runners directly (same process
+        group), so the launcher only waits for their teardown, while a targeted
+        SIGTERM is forwarded to them  */
+    process.on("SIGINT",  () => { /*  wait for the runners  */ })
+    process.on("SIGTERM", () => {
+        for (const child of childProcs)
+            child.kill("SIGTERM")
+    })
     console.log("")
     draw()
     await Promise.all(children)
@@ -343,9 +373,9 @@ const main = async (): Promise<void> => {
         try {
             const file    = path.join(harnessRoot, "results", `${timestamp}-${runner.slug}`, "summary.json")
             const summary = JSON.parse(fs.readFileSync(file, "utf8")) as
-                { cases?: { pass?: boolean, runs?: { outcome?: string }[] }[], aborted?: string }
+                { cases?: { pass?: boolean, incomplete?: boolean, runs?: { outcome?: string }[] }[], aborted?: string }
             const cases   = summary.cases ?? []
-            const failed  = cases.some((caze) => caze.pass !== true
+            const failed  = cases.some((caze) => caze.pass !== true && caze.incomplete !== true
                 && (caze.runs ?? []).some((run) => run.outcome !== "skipped"))
             const aborted = (summary.aborted ?? "") !== ""
             verdict = failed ? chalk.red("FAIL") :
@@ -358,7 +388,7 @@ const main = async (): Promise<void> => {
     }
 
     /*  one copyable command line that repeats this exact run  */
-    console.log(chalk.dim(`repeat: ${repeatLine(globs, models, opts.passThrough)}`))
+    console.log(chalk.dim(`repeat: ${repeatLine(globs, models, refModel, opts.passThrough)}`))
     process.exit(worst)
 }
 

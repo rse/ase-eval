@@ -7,11 +7,18 @@
 import Anthropic from "@anthropic-ai/sdk"
 import { query } from "@anthropic-ai/claude-agent-sdk"
 
-import type { Sandbox } from "./ase-test-sandbox.js"
+import type { Sandbox }   from "./ase-test-sandbox.js"
+import { pricingCallCost, pricingCost } from "./ase-test-pricing.js"
+import type { ModelUsage } from "./ase-test-pricing.js"
 
 /*  the hard timeout of a single completion, so a hung endpoint or a wedged agent
     tool subprocess can never freeze a worker of the run pool forever  */
 const LLM_TIMEOUT_MS = 120 * 1000
+
+/*  the accumulated spend of all simulator and judge completions, booked
+    against the global cost ceiling (the plain SDK path reports no cost, so
+    only a model of the pricing table contributes there)  */
+export const llmSpend = { usd: 0 }
 
 /*  a single-shot, tool-less LLM text completion for the user simulator and the
     rubric judge: with an API key the plain Anthropic SDK is used directly (cheap,
@@ -30,6 +37,7 @@ export const llmText = async (sandbox: Sandbox, model: string,
                 model, max_tokens: 1024, system,
                 messages: [ { role: "user", content: prompt } ]
             }, { signal: abort.signal })
+            llmSpend.usd += pricingCallCost(model, response.usage as Record<string, any>) ?? 0
             return response.content.filter((block) => block.type === "text")
                 .map((block) => block.text).join("\n").trim()
         }
@@ -51,6 +59,10 @@ export const llmText = async (sandbox: Sandbox, model: string,
                 for (const block of (Array.isArray(msg.message?.content) ? msg.message.content : []))
                     if (block.type === "text")
                         text += block.text
+            if (msg.type === "result") {
+                const usage = (msg as { modelUsage?: Record<string, ModelUsage> }).modelUsage
+                llmSpend.usd += usage !== undefined ? pricingCost(usage).usd : (msg.total_cost_usd ?? 0)
+            }
         }
         return text.trim()
     }

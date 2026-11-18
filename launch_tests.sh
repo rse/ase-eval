@@ -12,6 +12,8 @@
 ##  Launcher options (each one given skips its interactive step):
 ##    --tests <globs>    comma-separated case globs, e.g. --tests probe/help,meta/*
 ##    --models <ids>     comma-separated model ids to force, e.g. --models claude-haiku-5-5
+##    --ref-model <id>   fixed judge and simulator model of all runners
+##                       (default: $ASE_TEST_REF_MODEL, else eu.anthropic.claude-opus-5-5)
 ##    --yes              skip the cost confirmation
 ##  Harness options are passed to every runner, e.g. --jobs=6 -K --max-cost-usd=50.
 ##  After a run, a "repeat:" line shows the command that repeats the exact run.

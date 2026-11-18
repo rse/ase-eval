@@ -32,6 +32,10 @@ export type Simulator = {
     nextTurn (dialog: DialogEntry[]): Promise<string | null>
 }
 
+/*  a failure of the simulator itself (e.g. a completion timeout of its LLM), which
+    is a harness-side infrastructure error and never a failure of the tested skill  */
+export class SimulatorError extends Error {}
+
 /*  the schema of a scripted simulator "answers.yaml" file: ordered rules matching
     the question or last assistant message, plus an optional fallback answer
     (without a fallback, an unmatched free-text turn ends the session)  */
@@ -125,8 +129,13 @@ const llmSimulator = (stage: Stage, sandbox: Sandbox): Simulator => {
     const complete = async (dialog: DialogEntry[], ask: string): Promise<string> => {
         const transcript = dialog.map((entry) =>
             `${entry.role === "assistant" ? "ASSISTANT" : "YOU"}:\n${entry.text !== "" ? entry.text : "(empty)"}`)
-        return llmText(sandbox, model, system,
-            `${transcript.length > 0 ? `# Session So Far\n\n${transcript.join("\n\n")}\n\n` : ""}# Request\n\n${ask}`)
+        try {
+            return await llmText(sandbox, model, system,
+                `${transcript.length > 0 ? `# Session So Far\n\n${transcript.join("\n\n")}\n\n` : ""}# Request\n\n${ask}`)
+        }
+        catch (err) {
+            throw new SimulatorError(`simulator failed: ${err instanceof Error ? err.message : String(err)}`, { cause: err })
+        }
     }
     return {
         answers: async (questions) => {

@@ -15,7 +15,7 @@ import { harnessRoot } from "./ase-test-sandbox.js"
 
 /*  the shape of a "summary.json" file (tolerantly read, all fields optional)  */
 type Run     = { run: number, outcome: string, costUsd: number, durationMs: number, model: string }
-type Case    = { name: string, skill: string, pass: boolean, minPass: number, runs: Run[] }
+type Case    = { name: string, skill: string, pass: boolean, incomplete?: boolean, minPass: number, runs: Run[] }
 type Meta    = { timestamp?: string, model?: string, pluginCommit?: string, pluginVersion?: string }
 type Summary = { meta: Meta, cases: Case[], totalUsd: number, aborted: string }
 
@@ -166,15 +166,18 @@ const timeRows: string[][] = [
         const runs = entry.summary.cases.flatMap((caze) => caze.runs ?? [])
             .filter((run) => run.outcome !== "skipped" && run.outcome !== "error")
         const passedCases = entry.summary.cases.filter((caze) => caze.pass).length
+        const incomplete  = entry.summary.cases.filter((caze) => caze.incomplete === true).length
         const passedRuns  = runs.filter((run) => run.outcome === "pass").length
         const duration    = runs.reduce((sum, run) => sum + (run.durationMs ?? 0), 0)
         return [
             entry.time, entry.model, entry.version,
-            `${passedCases}/${entry.summary.cases.length}`,
+            `${passedCases}/${entry.summary.cases.length - incomplete}` +
+                (incomplete > 0 ? ` (+${incomplete} incomplete)` : ""),
             `${passedRuns}/${runs.length}`,
             `$${(entry.summary.totalUsd ?? 0).toFixed(2)}`,
             prettyMs(duration, { compact: true }),
-            entry.summary.aborted !== "" ? "yes" : ""
+            [ "incomplete", "interrupted" ].includes(entry.summary.aborted) ? "partial" :
+                (entry.summary.aborted ?? "") !== "" ? "yes" : ""
         ]
     })
 ]

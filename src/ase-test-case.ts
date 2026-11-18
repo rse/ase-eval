@@ -312,7 +312,7 @@ export const caseLoad = (casesDir: string, file: string): TestCase => {
             script:     turns.script  !== undefined ? resolve(turns.script,  "script")  : "",
             scriptData: turns.script  !== undefined ? scriptLoad(resolve(turns.script, "script"), name) : null,
             persona:    turns.persona !== undefined ? resolve(turns.persona, "persona") : "",
-            model:      process.env.ASE_TEST_FORCE_MODEL ?? turns.model ?? "",
+            model:      process.env.ASE_TEST_SIM_FORCE ?? turns.model ?? "",
             maxTurns:   turns.maxTurns ?? 16
         }
     }

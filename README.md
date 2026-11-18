@@ -74,7 +74,7 @@ npm start test -- -l                              # list the cases (free)
 npm start test -- -d --cases='meta/*'             # describe input and oracles of cases (free)
 ./run_agent_test.sh                               # "ase agent" end-to-end tests
 ./run_uplift_test.sh                              # ASE uplift benchmark incl. comparison (~$15-25)
-npm start compare                                 # compare past runs (free, writes COMPARISON.{md,html})
+./generate_comparison.sh                          # compare past runs (free, writes COMPARISON.{md,html})
 ```
 
 ### With a Local LLM (Anthropic-compatible gateway, e.g. LiteLLM)

@@ -1,7 +1,7 @@
 ASE Test Run Comparison
 =======================
 
-Generated 2026-11-18T09:50:29Z from 15 run summaries, 6 models. Cells show passed/runs, mean cost per run, and mean duration per run (skipped runs excluded; costs of non-Anthropic gateway models are unreliable).
+Generated 2026-11-18T10:12:07Z from 16 run summaries, 6 models. Cells show passed/runs, mean cost per run, and mean duration per run (skipped runs excluded; costs of non-Anthropic gateway models are unreliable).
 
 ## Cases × Models
 
@@ -14,6 +14,7 @@ Generated 2026-11-18T09:50:29Z from 15 run summaries, 6 models. Cells show passe
 | meta/mint-uuid | 4/4 $0.39 16s | 1/1 $0.60 2m | · | 0/1 $0.28 12s | · | · |
 | one-shot | 0/2 $0.30 46s | · | · | · | · | · |
 | plan-mode | 2/2 $0.83 2m | · | · | · | · | · |
+| probe/call-order | 3/3 $0.32 22s | · | · | · | · | · |
 | probe/compat | 4/4 $0.32 18s | 1/2 $0.70 2m | 1/2 $0.23 26s | · | · | 2/2 $0.36 20s |
 | probe/getopt-error | 6/6 $0.38 13s | 3/3 $0.48 1m | 3/3 $0.27 11s | · | · | 1/3 $1.11 34s |
 | probe/help | 6/6 $0.39 18s | 3/3 $0.30 1m | 3/3 $0.17 17s | · | · | 0/3 $0.11 9s |
@@ -40,7 +41,7 @@ Generated 2026-11-18T09:50:29Z from 15 run summaries, 6 models. Cells show passe
 | meta | 7/7 $0.42 35s | 3/4 $0.96 3m | · | 3/4 $0.34 35s | · | · |
 | one-shot | 0/2 $0.30 46s | · | · | · | · | · |
 | plan-mode | 2/2 $0.83 2m | · | · | · | · | · |
-| probe | 22/22 $0.36 15s | 10/14 $0.50 1m | 10/11 $0.24 16s | · | · | 8/14 $0.56 25s |
+| probe | 25/25 $0.35 16s | 10/14 $0.50 1m | 10/11 $0.24 16s | · | · | 8/14 $0.56 25s |
 | review | 9/9 $0.73 1m | 0/9 $3.51 8m | · | 9/9 $0.72 1m | · | · |
 | task | 6/6 $0.89 1m | 0/1 $0.00 10m | · | 6/6 $0.71 1m | · | · |
 | value | 4/6 $1.25 3m | · | · | · | · | · |
@@ -64,3 +65,4 @@ Generated 2026-11-18T09:50:29Z from 15 run summaries, 6 models. Cells show passe
 | 2026-11-17T02-50-40 | moonshotai.kimi-k3.1 | 3236c653 | 0/1 | 0/2 | $10.00 | 44s |  |
 | 2026-11-17T09-16-23 | claude-opus-5-5 | 19b6f27a | 1/1 | 1/1 | $0.47 | 16s |  |
 | 2026-11-17T09-16-49 | claude-opus-5-5 | 19b6f27a | 1/1 | 1/1 | $0.36 | 15s |  |
+| 2026-11-18T10-07-56 | claude-opus-5-5 | 2.1.1 | 1/1 | 3/3 | $0.96 | 1m |  |

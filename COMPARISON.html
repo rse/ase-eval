@@ -51,7 +51,7 @@ span.swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-blo
 </style>
 <body>
 <h1>ASE Test Run Comparison</h1>
-<p class="sub">Generated 2026-11-18T09:50:29Z from 15 run summaries, 6 models.
+<p class="sub">Generated 2026-11-18T10:12:07Z from 16 run summaries, 6 models.
 Cells show passed/runs, mean cost per run, and mean duration per run (skipped runs excluded;
 costs of non-Anthropic gateway models are unreliable). Click a column header to sort.</p>
 <h2>Cases × Models</h2>
@@ -65,6 +65,7 @@ costs of non-Anthropic gateway models are unreliable). Click a column header to 
 <tr><th scope="row">meta/mint-uuid</th><td>4/4 $0.39 16s</td><td>1/1 $0.60 2m</td><td>·</td><td>0/1 $0.28 12s</td><td>·</td><td>·</td></tr>
 <tr><th scope="row">one-shot</th><td>0/2 $0.30 46s</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
 <tr><th scope="row">plan-mode</th><td>2/2 $0.83 2m</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
+<tr><th scope="row">probe/call-order</th><td>3/3 $0.32 22s</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
 <tr><th scope="row">probe/compat</th><td>4/4 $0.32 18s</td><td>1/2 $0.70 2m</td><td>1/2 $0.23 26s</td><td>·</td><td>·</td><td>2/2 $0.36 20s</td></tr>
 <tr><th scope="row">probe/getopt-error</th><td>6/6 $0.38 13s</td><td>3/3 $0.48 1m</td><td>3/3 $0.27 11s</td><td>·</td><td>·</td><td>1/3 $1.11 34s</td></tr>
 <tr><th scope="row">probe/help</th><td>6/6 $0.39 18s</td><td>3/3 $0.30 1m</td><td>3/3 $0.17 17s</td><td>·</td><td>·</td><td>0/3 $0.11 9s</td></tr>
@@ -92,7 +93,7 @@ costs of non-Anthropic gateway models are unreliable). Click a column header to 
 <tr><th scope="row">meta</th><td>7/7 $0.42 35s</td><td>3/4 $0.96 3m</td><td>·</td><td>3/4 $0.34 35s</td><td>·</td><td>·</td></tr>
 <tr><th scope="row">one-shot</th><td>0/2 $0.30 46s</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
 <tr><th scope="row">plan-mode</th><td>2/2 $0.83 2m</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
-<tr><th scope="row">probe</th><td>22/22 $0.36 15s</td><td>10/14 $0.50 1m</td><td>10/11 $0.24 16s</td><td>·</td><td>·</td><td>8/14 $0.56 25s</td></tr>
+<tr><th scope="row">probe</th><td>25/25 $0.35 16s</td><td>10/14 $0.50 1m</td><td>10/11 $0.24 16s</td><td>·</td><td>·</td><td>8/14 $0.56 25s</td></tr>
 <tr><th scope="row">review</th><td>9/9 $0.73 1m</td><td>0/9 $3.51 8m</td><td>·</td><td>9/9 $0.72 1m</td><td>·</td><td>·</td></tr>
 <tr><th scope="row">task</th><td>6/6 $0.89 1m</td><td>0/1 $0.00 10m</td><td>·</td><td>6/6 $0.71 1m</td><td>·</td><td>·</td></tr>
 <tr><th scope="row">value</th><td>4/6 $1.25 3m</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
@@ -117,6 +118,7 @@ costs of non-Anthropic gateway models are unreliable). Click a column header to 
 <tr><th scope="row">2026-11-17T02-50-40</th><td>moonshotai.kimi-k3.1</td><td>3236c653</td><td>0/1</td><td>0/2</td><td>$10.00</td><td>44s</td><td></td></tr>
 <tr><th scope="row">2026-11-17T09-16-23</th><td>claude-opus-5-5</td><td>19b6f27a</td><td>1/1</td><td>1/1</td><td>$0.47</td><td>16s</td><td></td></tr>
 <tr><th scope="row">2026-11-17T09-16-49</th><td>claude-opus-5-5</td><td>19b6f27a</td><td>1/1</td><td>1/1</td><td>$0.36</td><td>15s</td><td></td></tr>
+<tr><th scope="row">2026-11-18T10-07-56</th><td>claude-opus-5-5</td><td>2.1.1</td><td>1/1</td><td>3/3</td><td>$0.96</td><td>1m</td><td></td></tr>
 </tbody>
 </table>
 <h2>Pass Rate over Time</h2>
@@ -133,37 +135,39 @@ costs of non-Anthropic gateway models are unreliable). Click a column header to 
 <line class="grid" x1="56" y1="16" x2="824" y2="16"/>
 <text class="tick" x="48" y="20" text-anchor="end">100%</text>
 <text class="tick" transform="rotate(-40 56 264)" x="56" y="264" text-anchor="end">2026-11-16T07-37-07</text>
-<text class="tick" transform="rotate(-40 110.85714285714286 264)" x="110.85714285714286" y="264" text-anchor="end">2026-11-16T08-17-33</text>
-<text class="tick" transform="rotate(-40 165.71428571428572 264)" x="165.71428571428572" y="264" text-anchor="end">2026-11-16T12-01-24</text>
-<text class="tick" transform="rotate(-40 220.57142857142856 264)" x="220.57142857142856" y="264" text-anchor="end">2026-11-16T12-04-09</text>
-<text class="tick" transform="rotate(-40 275.42857142857144 264)" x="275.42857142857144" y="264" text-anchor="end">2026-11-16T18-26-38</text>
-<text class="tick" transform="rotate(-40 330.2857142857143 264)" x="330.2857142857143" y="264" text-anchor="end">2026-11-16T19-01-38</text>
-<text class="tick" transform="rotate(-40 385.1428571428571 264)" x="385.1428571428571" y="264" text-anchor="end">2026-11-16T19-09-35</text>
-<text class="tick" transform="rotate(-40 440 264)" x="440" y="264" text-anchor="end">2026-11-16T19-31-54</text>
-<text class="tick" transform="rotate(-40 494.85714285714283 264)" x="494.85714285714283" y="264" text-anchor="end">2026-11-16T19-54-04</text>
-<text class="tick" transform="rotate(-40 549.7142857142858 264)" x="549.7142857142858" y="264" text-anchor="end">2026-11-16T19-57-32</text>
-<text class="tick" transform="rotate(-40 604.5714285714286 264)" x="604.5714285714286" y="264" text-anchor="end">2026-11-16T20-35-38</text>
-<text class="tick" transform="rotate(-40 659.4285714285714 264)" x="659.4285714285714" y="264" text-anchor="end">2026-11-17T02-26-35</text>
-<text class="tick" transform="rotate(-40 714.2857142857142 264)" x="714.2857142857142" y="264" text-anchor="end">2026-11-17T02-50-40</text>
-<text class="tick" transform="rotate(-40 769.1428571428571 264)" x="769.1428571428571" y="264" text-anchor="end">2026-11-17T09-16-23</text>
-<text class="tick" transform="rotate(-40 824 264)" x="824" y="264" text-anchor="end">2026-11-17T09-16-49</text>
-<polyline fill="none" stroke="var(--series-1)" stroke-width="2" points="56.0,16.0 110.9,16.0 165.7,16.0 220.6,16.0 440.0,93.3 494.9,132.0 549.7,16.0 769.1,16.0 824.0,16.0"/>
+<text class="tick" transform="rotate(-40 107.2 264)" x="107.2" y="264" text-anchor="end">2026-11-16T08-17-33</text>
+<text class="tick" transform="rotate(-40 158.4 264)" x="158.4" y="264" text-anchor="end">2026-11-16T12-01-24</text>
+<text class="tick" transform="rotate(-40 209.60000000000002 264)" x="209.60000000000002" y="264" text-anchor="end">2026-11-16T12-04-09</text>
+<text class="tick" transform="rotate(-40 260.8 264)" x="260.8" y="264" text-anchor="end">2026-11-16T18-26-38</text>
+<text class="tick" transform="rotate(-40 312 264)" x="312" y="264" text-anchor="end">2026-11-16T19-01-38</text>
+<text class="tick" transform="rotate(-40 363.20000000000005 264)" x="363.20000000000005" y="264" text-anchor="end">2026-11-16T19-09-35</text>
+<text class="tick" transform="rotate(-40 414.4 264)" x="414.4" y="264" text-anchor="end">2026-11-16T19-31-54</text>
+<text class="tick" transform="rotate(-40 465.6 264)" x="465.6" y="264" text-anchor="end">2026-11-16T19-54-04</text>
+<text class="tick" transform="rotate(-40 516.8 264)" x="516.8" y="264" text-anchor="end">2026-11-16T19-57-32</text>
+<text class="tick" transform="rotate(-40 568 264)" x="568" y="264" text-anchor="end">2026-11-16T20-35-38</text>
+<text class="tick" transform="rotate(-40 619.1999999999999 264)" x="619.1999999999999" y="264" text-anchor="end">2026-11-17T02-26-35</text>
+<text class="tick" transform="rotate(-40 670.4000000000001 264)" x="670.4000000000001" y="264" text-anchor="end">2026-11-17T02-50-40</text>
+<text class="tick" transform="rotate(-40 721.6 264)" x="721.6" y="264" text-anchor="end">2026-11-17T09-16-23</text>
+<text class="tick" transform="rotate(-40 772.8 264)" x="772.8" y="264" text-anchor="end">2026-11-17T09-16-49</text>
+<text class="tick" transform="rotate(-40 824 264)" x="824" y="264" text-anchor="end">2026-11-18T10-07-56</text>
+<polyline fill="none" stroke="var(--series-1)" stroke-width="2" points="56.0,16.0 107.2,16.0 158.4,16.0 209.6,16.0 414.4,93.3 465.6,132.0 516.8,16.0 721.6,16.0 772.8,16.0 824.0,16.0"/>
 <circle cx="56.0" cy="16.0" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-16T07-37-07: 100%</title></circle>
-<circle cx="110.9" cy="16.0" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-16T08-17-33: 100%</title></circle>
-<circle cx="165.7" cy="16.0" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-16T12-01-24: 100%</title></circle>
-<circle cx="220.6" cy="16.0" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-16T12-04-09: 100%</title></circle>
-<circle cx="440.0" cy="93.3" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-16T19-31-54: 67%</title></circle>
-<circle cx="494.9" cy="132.0" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-16T19-54-04: 50%</title></circle>
-<circle cx="549.7" cy="16.0" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-16T19-57-32: 100%</title></circle>
-<circle cx="769.1" cy="16.0" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-17T09-16-23: 100%</title></circle>
-<circle cx="824.0" cy="16.0" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-17T09-16-49: 100%</title></circle>
-<polyline fill="none" stroke="var(--series-2)" stroke-width="2" points="275.4,214.9 604.6,82.3"/>
-<circle cx="275.4" cy="214.9" r="4" fill="var(--series-2)"><title>deepseek.v3.2, 2026-11-16T18-26-38: 14%</title></circle>
-<circle cx="604.6" cy="82.3" r="4" fill="var(--series-2)"><title>deepseek.v3.2, 2026-11-16T20-35-38: 71%</title></circle>
-<circle cx="330.3" cy="37.1" r="4" fill="var(--series-3)"><title>global.openai.gpt-6-astra, 2026-11-16T19-01-38: 91%</title></circle>
-<circle cx="385.1" cy="42.8" r="4" fill="var(--series-4)"><title>global.openai.gpt-6-sol, 2026-11-16T19-09-35: 88%</title></circle>
-<circle cx="714.3" cy="248.0" r="4" fill="var(--series-5)"><title>moonshotai.kimi-k3.1, 2026-11-17T02-50-40: 0%</title></circle>
-<circle cx="659.4" cy="115.4" r="4" fill="var(--series-6)"><title>qwen.qwen3-235b-a22b-2507-v1:0, 2026-11-17T02-26-35: 57%</title></circle>
+<circle cx="107.2" cy="16.0" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-16T08-17-33: 100%</title></circle>
+<circle cx="158.4" cy="16.0" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-16T12-01-24: 100%</title></circle>
+<circle cx="209.6" cy="16.0" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-16T12-04-09: 100%</title></circle>
+<circle cx="414.4" cy="93.3" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-16T19-31-54: 67%</title></circle>
+<circle cx="465.6" cy="132.0" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-16T19-54-04: 50%</title></circle>
+<circle cx="516.8" cy="16.0" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-16T19-57-32: 100%</title></circle>
+<circle cx="721.6" cy="16.0" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-17T09-16-23: 100%</title></circle>
+<circle cx="772.8" cy="16.0" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-17T09-16-49: 100%</title></circle>
+<circle cx="824.0" cy="16.0" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-18T10-07-56: 100%</title></circle>
+<polyline fill="none" stroke="var(--series-2)" stroke-width="2" points="260.8,214.9 568.0,82.3"/>
+<circle cx="260.8" cy="214.9" r="4" fill="var(--series-2)"><title>deepseek.v3.2, 2026-11-16T18-26-38: 14%</title></circle>
+<circle cx="568.0" cy="82.3" r="4" fill="var(--series-2)"><title>deepseek.v3.2, 2026-11-16T20-35-38: 71%</title></circle>
+<circle cx="312.0" cy="37.1" r="4" fill="var(--series-3)"><title>global.openai.gpt-6-astra, 2026-11-16T19-01-38: 91%</title></circle>
+<circle cx="363.2" cy="42.8" r="4" fill="var(--series-4)"><title>global.openai.gpt-6-sol, 2026-11-16T19-09-35: 88%</title></circle>
+<circle cx="670.4" cy="248.0" r="4" fill="var(--series-5)"><title>moonshotai.kimi-k3.1, 2026-11-17T02-50-40: 0%</title></circle>
+<circle cx="619.2" cy="115.4" r="4" fill="var(--series-6)"><title>qwen.qwen3-235b-a22b-2507-v1:0, 2026-11-17T02-26-35: 57%</title></circle>
 </svg>
 <p class="legend">
 <span class="key"><span class="swatch" style="background: var(--series-1)"></span>claude-opus-5-5</span>
@@ -187,37 +191,39 @@ costs of non-Anthropic gateway models are unreliable). Click a column header to 
 <line class="grid" x1="56" y1="16" x2="824" y2="16"/>
 <text class="tick" x="48" y="20" text-anchor="end">$55</text>
 <text class="tick" transform="rotate(-40 56 264)" x="56" y="264" text-anchor="end">2026-11-16T07-37-07</text>
-<text class="tick" transform="rotate(-40 110.85714285714286 264)" x="110.85714285714286" y="264" text-anchor="end">2026-11-16T08-17-33</text>
-<text class="tick" transform="rotate(-40 165.71428571428572 264)" x="165.71428571428572" y="264" text-anchor="end">2026-11-16T12-01-24</text>
-<text class="tick" transform="rotate(-40 220.57142857142856 264)" x="220.57142857142856" y="264" text-anchor="end">2026-11-16T12-04-09</text>
-<text class="tick" transform="rotate(-40 275.42857142857144 264)" x="275.42857142857144" y="264" text-anchor="end">2026-11-16T18-26-38</text>
-<text class="tick" transform="rotate(-40 330.2857142857143 264)" x="330.2857142857143" y="264" text-anchor="end">2026-11-16T19-01-38</text>
-<text class="tick" transform="rotate(-40 385.1428571428571 264)" x="385.1428571428571" y="264" text-anchor="end">2026-11-16T19-09-35</text>
-<text class="tick" transform="rotate(-40 440 264)" x="440" y="264" text-anchor="end">2026-11-16T19-31-54</text>
-<text class="tick" transform="rotate(-40 494.85714285714283 264)" x="494.85714285714283" y="264" text-anchor="end">2026-11-16T19-54-04</text>
-<text class="tick" transform="rotate(-40 549.7142857142858 264)" x="549.7142857142858" y="264" text-anchor="end">2026-11-16T19-57-32</text>
-<text class="tick" transform="rotate(-40 604.5714285714286 264)" x="604.5714285714286" y="264" text-anchor="end">2026-11-16T20-35-38</text>
-<text class="tick" transform="rotate(-40 659.4285714285714 264)" x="659.4285714285714" y="264" text-anchor="end">2026-11-17T02-26-35</text>
-<text class="tick" transform="rotate(-40 714.2857142857142 264)" x="714.2857142857142" y="264" text-anchor="end">2026-11-17T02-50-40</text>
-<text class="tick" transform="rotate(-40 769.1428571428571 264)" x="769.1428571428571" y="264" text-anchor="end">2026-11-17T09-16-23</text>
-<text class="tick" transform="rotate(-40 824 264)" x="824" y="264" text-anchor="end">2026-11-17T09-16-49</text>
-<polyline fill="none" stroke="var(--series-1)" stroke-width="2" points="56.0,180.4 110.9,220.3 165.7,228.1 220.6,232.9 440.0,216.3 494.9,238.4 549.7,227.9 769.1,246.0 824.0,246.5"/>
+<text class="tick" transform="rotate(-40 107.2 264)" x="107.2" y="264" text-anchor="end">2026-11-16T08-17-33</text>
+<text class="tick" transform="rotate(-40 158.4 264)" x="158.4" y="264" text-anchor="end">2026-11-16T12-01-24</text>
+<text class="tick" transform="rotate(-40 209.60000000000002 264)" x="209.60000000000002" y="264" text-anchor="end">2026-11-16T12-04-09</text>
+<text class="tick" transform="rotate(-40 260.8 264)" x="260.8" y="264" text-anchor="end">2026-11-16T18-26-38</text>
+<text class="tick" transform="rotate(-40 312 264)" x="312" y="264" text-anchor="end">2026-11-16T19-01-38</text>
+<text class="tick" transform="rotate(-40 363.20000000000005 264)" x="363.20000000000005" y="264" text-anchor="end">2026-11-16T19-09-35</text>
+<text class="tick" transform="rotate(-40 414.4 264)" x="414.4" y="264" text-anchor="end">2026-11-16T19-31-54</text>
+<text class="tick" transform="rotate(-40 465.6 264)" x="465.6" y="264" text-anchor="end">2026-11-16T19-54-04</text>
+<text class="tick" transform="rotate(-40 516.8 264)" x="516.8" y="264" text-anchor="end">2026-11-16T19-57-32</text>
+<text class="tick" transform="rotate(-40 568 264)" x="568" y="264" text-anchor="end">2026-11-16T20-35-38</text>
+<text class="tick" transform="rotate(-40 619.1999999999999 264)" x="619.1999999999999" y="264" text-anchor="end">2026-11-17T02-26-35</text>
+<text class="tick" transform="rotate(-40 670.4000000000001 264)" x="670.4000000000001" y="264" text-anchor="end">2026-11-17T02-50-40</text>
+<text class="tick" transform="rotate(-40 721.6 264)" x="721.6" y="264" text-anchor="end">2026-11-17T09-16-23</text>
+<text class="tick" transform="rotate(-40 772.8 264)" x="772.8" y="264" text-anchor="end">2026-11-17T09-16-49</text>
+<text class="tick" transform="rotate(-40 824 264)" x="824" y="264" text-anchor="end">2026-11-18T10-07-56</text>
+<polyline fill="none" stroke="var(--series-1)" stroke-width="2" points="56.0,180.4 107.2,220.3 158.4,228.1 209.6,232.9 414.4,216.3 465.6,238.4 516.8,227.9 721.6,246.0 772.8,246.5 824.0,243.9"/>
 <circle cx="56.0" cy="180.4" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-16T07-37-07: $15.95</title></circle>
-<circle cx="110.9" cy="220.3" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-16T08-17-33: $6.54</title></circle>
-<circle cx="165.7" cy="228.1" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-16T12-01-24: $4.70</title></circle>
-<circle cx="220.6" cy="232.9" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-16T12-04-09: $3.57</title></circle>
-<circle cx="440.0" cy="216.3" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-16T19-31-54: $7.48</title></circle>
-<circle cx="494.9" cy="238.4" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-16T19-54-04: $2.26</title></circle>
-<circle cx="549.7" cy="227.9" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-16T19-57-32: $4.75</title></circle>
-<circle cx="769.1" cy="246.0" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-17T09-16-23: $0.47</title></circle>
-<circle cx="824.0" cy="246.5" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-17T09-16-49: $0.36</title></circle>
-<polyline fill="none" stroke="var(--series-2)" stroke-width="2" points="275.4,16.0 604.6,214.2"/>
-<circle cx="275.4" cy="16.0" r="4" fill="var(--series-2)"><title>deepseek.v3.2, 2026-11-16T18-26-38: $54.71</title></circle>
-<circle cx="604.6" cy="214.2" r="4" fill="var(--series-2)"><title>deepseek.v3.2, 2026-11-16T20-35-38: $7.98</title></circle>
-<circle cx="330.3" cy="237.0" r="4" fill="var(--series-3)"><title>global.openai.gpt-6-astra, 2026-11-16T19-01-38: $2.59</title></circle>
-<circle cx="385.1" cy="130.6" r="4" fill="var(--series-4)"><title>global.openai.gpt-6-sol, 2026-11-16T19-09-35: $27.68</title></circle>
-<circle cx="714.3" cy="205.6" r="4" fill="var(--series-5)"><title>moonshotai.kimi-k3.1, 2026-11-17T02-50-40: $10.00</title></circle>
-<circle cx="659.4" cy="214.7" r="4" fill="var(--series-6)"><title>qwen.qwen3-235b-a22b-2507-v1:0, 2026-11-17T02-26-35: $7.85</title></circle>
+<circle cx="107.2" cy="220.3" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-16T08-17-33: $6.54</title></circle>
+<circle cx="158.4" cy="228.1" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-16T12-01-24: $4.70</title></circle>
+<circle cx="209.6" cy="232.9" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-16T12-04-09: $3.57</title></circle>
+<circle cx="414.4" cy="216.3" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-16T19-31-54: $7.48</title></circle>
+<circle cx="465.6" cy="238.4" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-16T19-54-04: $2.26</title></circle>
+<circle cx="516.8" cy="227.9" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-16T19-57-32: $4.75</title></circle>
+<circle cx="721.6" cy="246.0" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-17T09-16-23: $0.47</title></circle>
+<circle cx="772.8" cy="246.5" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-17T09-16-49: $0.36</title></circle>
+<circle cx="824.0" cy="243.9" r="4" fill="var(--series-1)"><title>claude-opus-5-5, 2026-11-18T10-07-56: $0.96</title></circle>
+<polyline fill="none" stroke="var(--series-2)" stroke-width="2" points="260.8,16.0 568.0,214.2"/>
+<circle cx="260.8" cy="16.0" r="4" fill="var(--series-2)"><title>deepseek.v3.2, 2026-11-16T18-26-38: $54.71</title></circle>
+<circle cx="568.0" cy="214.2" r="4" fill="var(--series-2)"><title>deepseek.v3.2, 2026-11-16T20-35-38: $7.98</title></circle>
+<circle cx="312.0" cy="237.0" r="4" fill="var(--series-3)"><title>global.openai.gpt-6-astra, 2026-11-16T19-01-38: $2.59</title></circle>
+<circle cx="363.2" cy="130.6" r="4" fill="var(--series-4)"><title>global.openai.gpt-6-sol, 2026-11-16T19-09-35: $27.68</title></circle>
+<circle cx="670.4" cy="205.6" r="4" fill="var(--series-5)"><title>moonshotai.kimi-k3.1, 2026-11-17T02-50-40: $10.00</title></circle>
+<circle cx="619.2" cy="214.7" r="4" fill="var(--series-6)"><title>qwen.qwen3-235b-a22b-2507-v1:0, 2026-11-17T02-26-35: $7.85</title></circle>
 </svg>
 <p class="legend">
 <span class="key"><span class="swatch" style="background: var(--series-1)"></span>claude-opus-5-5</span>

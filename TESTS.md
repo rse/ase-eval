@@ -259,9 +259,9 @@ committed.
 ## Comparing Runs
 
 ```
-npm start compare                                  # compare all summaries under results/ (free)
-npm start compare -- --add=../some-run-dir          # include an extra run directory
-npm start compare -- --results=other --out=/tmp     # non-default input and output directories
+./generate_comparison.sh                            # compare all summaries under results/ (free)
+./generate_comparison.sh --add ../some-run-dir      # include an extra run directory
+npm start compare -- --results=other --out=/tmp     # the same via stx (option values need the "=" form)
 ```
 
 `src/ase-test-compare.ts` collects every `results/*/summary.json`

@@ -71,7 +71,7 @@ the probe tests.
 ./run_all_tests.sh                                # all cases, after a cost confirmation (probe/* first, rest only if they pass)
 ./run_all_tests.sh --cases='review/*' --jobs=6    # only matching cases, 6 runs in parallel
 ./run_all_tests.sh -K                             # keep the sandboxes of failed runs
-./run_all_tests.sh --max-cost-usd=40              # raise the global cost ceiling (default $20)
+./run_all_tests.sh --max-cost-usd=40              # cap the global cost ceiling (default: summed case budgets + 10%)
 ./run_all_tests.sh --force-model claude-opus-5-5  # force all models onto one model
 npm start test -- -l                              # list the cases (free)
 npm start test -- -d --cases='meta/*'             # describe input and oracles of cases (free)
@@ -98,9 +98,11 @@ much slower, and the reported costs are meaningless for non-Anthropic
 models. See `TESTS.md` ("Third-Party Gateways") for the details and
 `LOCAL_SETUP.md` for a complete example setup.
 
-> **Notice:** the full suite (19 cases, 43 runs) costs roughly $37 on the
-> Anthropic API, above the default ceiling of $20: pass
-> `--max-cost-usd=50`, else the run stops early with exit code `2`.
+> **Notice:** the full suite (19 cases, 43 runs) costs roughly $37 on
+> the Anthropic API. The cost ceiling defaults to the summed budgets of
+> the scheduled cases + 10%, so it grows with the suite; an explicit
+> `--max-cost-usd` caps it, and a hit ceiling stops the run early with
+> exit code `2`.
 
 Results land in `results/<timestamp>/`; exit codes and artifacts are
 listed in `TESTS.md`.

@@ -42,7 +42,8 @@ program
     .option("-d, --describe", "describe the matched cases (input, fixture, simulator, oracles) and exit", false)
     .option("-k, --keep", "keep the sandboxes of all runs", false)
     .option("-K, --keep-failed", "keep the sandboxes of failed runs", false)
-    .option("-m, --max-cost-usd <n>", "global cost ceiling in USD", "20")
+    .option("-m, --max-cost-usd <n>", "global cost ceiling in USD " +
+        "(default: the summed budgets of the scheduled cases + 10%)")
     .option("-b, --budget-factor <n>", "factor applied to the per-run budgets of all cases " +
         "(default: $ASE_TEST_BUDGET_FACTOR, else 1)")
     .option("--allow-stale", "run even if the tool build is older than its sources", false)
@@ -130,10 +131,10 @@ const resultsDir = opts.results !== undefined ?
 /*  the global budget state and the parallelism, where the jobs default is resolved
     only here, after the LLM gateway profile could set "ASE_TEST_JOBS" (non-numeric
     values must never silently disable the ceiling or starve the worker pool)  */
-const maxCostUsd = Number(opts.maxCostUsd)
+const maxCostUsd = opts.maxCostUsd !== undefined ? Number(opts.maxCostUsd) : null
 const jobsValue  = opts.jobs ?? process.env.ASE_TEST_JOBS ?? "4"
 const jobs       = Number(jobsValue)
-if (!Number.isFinite(maxCostUsd) || maxCostUsd <= 0) {
+if (maxCostUsd !== null && (!Number.isFinite(maxCostUsd) || maxCostUsd <= 0)) {
     console.error(chalk.red(`invalid --max-cost-usd value: "${opts.maxCostUsd}"`))
     process.exit(2)
 }
@@ -156,9 +157,15 @@ for (const caze of cases) {
         stage.maxUsd *= budgetFactor
 }
 
-/*  the global ceiling scales with the per-run budgets, so the scaled budgets
-    of a few slow or failed runs cannot alone exhaust an unscaled ceiling  */
-const ceilingUsd = maxCostUsd * budgetFactor
+/*  the global ceiling: an explicit --max-cost-usd scales with the per-run budgets,
+    so the scaled budgets of a few slow or failed runs cannot alone exhaust an
+    unscaled ceiling; the default is the summed (already scaled) budgets of the
+    scheduled cases plus 10% headroom for retried attempts, so the ceiling grows
+    with the suite and stays a guard against runaway costs only  */
+const ceilingUsd = maxCostUsd !== null ? maxCostUsd * budgetFactor :
+    Math.ceil(cases.reduce((sum, caze) => sum + caze.maxUsd * caze.runs, 0) * 1.1)
+console.log(chalk.dim(`cost ceiling: $${ceilingUsd.toFixed(2)} ` +
+    `(${maxCostUsd !== null ? "from --max-cost-usd" : `auto from ${cases.length} case(s)`})`))
 
 /*  the money actually booked against the ceiling, and the reason why scheduling
     stopped ("" while it did not, so the string doubles as the stop flag)  */

@@ -19,7 +19,7 @@ via `npm start test -- <options>` and the `run_*.sh` scripts.
 | `-d, --describe`         | show input, fixture, simulator, and oracles of the cases (free)      |
 | `-k, --keep`             | keep the sandboxes of all runs                                       |
 | `-K, --keep-failed`      | keep the sandboxes of failed runs                                    |
-| `-m, --max-cost-usd <n>` | global cost ceiling in USD (default: `20`)                           |
+| `-m, --max-cost-usd <n>` | global cost ceiling in USD (default: summed budgets of the scheduled cases + 10%) |
 | `-b, --budget-factor <n>` | factor on all per-run budgets (default: `$ASE_TEST_BUDGET_FACTOR`, else `1`) |
 | `--allow-stale`          | run even if `tool/dst` is older than `tool/src`                      |
 | `-r, --results <dir>`    | results directory (default: `results/<timestamp>`)                   |
@@ -215,9 +215,13 @@ sessions use the automatic permission mode of the agent tool.
 -   `--budget-factor` scales all budgets, e.g. for gateway models
     without prompt caching; `launch_tests.sh` sets
     `ASE_TEST_BUDGET_FACTOR=3` for every non-Anthropic model.
--   The global `--max-cost-usd` ceiling, scaled by `--budget-factor`,
-    stops scheduling further runs (in-flight runs complete, the rest is
-    `skipped`). A run whose cost is inaccurate (timeout, stall, or crash
+-   The global cost ceiling stops scheduling further runs (in-flight
+    runs complete, the rest is `skipped`). It defaults to the summed
+    (already `--budget-factor`-scaled) budgets of the scheduled cases
+    plus 10% headroom for retried attempts, so it grows with the suite
+    and only guards against runaway costs; an explicit `--max-cost-usd`,
+    scaled by `--budget-factor`, caps it harder. The resolved ceiling
+    and its origin are printed at startup. A run whose cost is inaccurate (timeout, stall, or crash
     before the final result message) is booked at the mean accurate cost
     so far (capped by, and before the first accurate run at, its budget),
     and at its lower bound (usually `0`) if it never produced an
@@ -292,7 +296,8 @@ in parallel, each into its own `results/<timestamp>-<model>/` directory
 (child output in its `launcher.log`), with a live progress line per
 model. The explicit case selection bypasses the probe gate. Extra
 options (e.g. `--jobs=6`, `-K`, `--max-cost-usd=50`) are passed through
-to every runner. Afterwards the comparison report is refreshed (see
+to every runner; a `--max-cost-usd` ceiling therefore applies per model
+runner, not to the whole matrix. Afterwards the comparison report is refreshed (see
 below); the exit code is the worst runner exit code.
 
 Each interactive step can be skipped with a launcher option:

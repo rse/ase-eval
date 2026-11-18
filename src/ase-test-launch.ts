@@ -204,7 +204,8 @@ type Runner = {
 /*  render the progress line of one runner  */
 const runnerLine = (runner: Runner): string => {
     const width  = 16
-    const filled = runner.total > 0 ? Math.round(width * (runner.done / runner.total)) : 0
+    const filled = runner.total > 0 ?
+        Math.min(width, Math.max(0, Math.round(width * (runner.done / runner.total)))) : 0
     const bar    = chalk.blue("▮".repeat(filled)) + chalk.dim("▯".repeat(width - filled))
     const state  = runner.exitCode === null ? chalk.dim(runner.last || "running") :
         runner.exitCode === 0 ? chalk.green("done") : chalk.red(`done (exit ${runner.exitCode})`)
@@ -317,11 +318,16 @@ const main = async (): Promise<void> => {
         const child = execa("node", argv, { cwd: harnessRoot, env, reject: false, all: true, buffer: false })
         childProcs.push(child)
         const input = readline.createInterface({ input: child.all! })
+        /*  only the final report line of a run counts ("<mark> <case> run <n> (<duration>, $<cost>..."),
+            never a warning about it like "⚠ <case> run <n> (retry): evaluation failed (...)", and
+            each run at most once  */
+        const seen = new Set<string>()
         input.on("line", (raw) => {
             log.write(`${raw}\n`)
             const line = raw.replace(ansi, "")
-            const run  = /^([✔✘−⚠]) \S+ run \d+ \(/.exec(line)
-            if (run !== null) {
+            const run  = /^([✔✘−⚠]) (\S+ run \d+) \([^,()]+, \$\d+\.\d+/.exec(line)
+            if (run !== null && !seen.has(run[2])) {
+                seen.add(run[2])
                 runner.done   += 1
                 runner.passed += run[1] === "✔" ? 1 : 0
                 const cost = /\$(\d+\.\d+)/.exec(line)

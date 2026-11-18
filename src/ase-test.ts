@@ -522,6 +522,14 @@ const onInterrupt = (signal: string) => {
 process.on("SIGINT",  () => { onInterrupt("SIGINT") })
 process.on("SIGTERM", () => { onInterrupt("SIGTERM") })
 
+/*  a vanished reader of the console output (e.g. a crashed launcher) must never
+    crash the runner mid-run, so the runs complete and the summary gets written  */
+for (const stream of [ process.stdout, process.stderr ])
+    stream.on("error", (err: NodeJS.ErrnoException) => {
+        if (err.code !== "EPIPE")
+            throw err
+    })
+
 let next = 0
 const worker = async (): Promise<void> => {
     while (next < work.length) {

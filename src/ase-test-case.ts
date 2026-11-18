@@ -6,6 +6,7 @@
 
 import * as fs   from "node:fs"
 import * as path from "node:path"
+import * as url  from "node:url"
 
 import { z }     from "zod"
 import YAML      from "yaml"
@@ -13,6 +14,9 @@ import YAML      from "yaml"
 import { scriptLoad }  from "./ase-test-simulator.js"
 import type { Script } from "./ase-test-simulator.js"
 import { reviewLeaks } from "./ase-test-review.js"
+
+/*  the harness root (this module lives in "<harness>/src/"), e.g. for the node modules of the fixtures  */
+const casesHarnessRoot = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "..")
 
 /*  the oracle specifications: each oracle is an object with exactly one key
     naming the oracle kind, mirroring the evaluation criteria of the agent
@@ -194,6 +198,7 @@ const caseSchema = z.strictObject({
         config:     z.record(z.string(), z.unknown()).optional(),
         tasks:      z.array(z.string()).optional(),
         files:      z.string().optional(),
+        nodeModules: z.array(z.string().regex(/^(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+$/)).optional(),
         change:     z.strictObject({
             files:      z.string(),
             delete:     z.string().optional(),
@@ -257,6 +262,7 @@ export type TestCase = {
         config:     Record<string, unknown> | null
         tasks:      string[]
         files:      string
+        nodeModules: string[]
         change:     FixtureChange | null
     }
     turns:      Turns | null
@@ -388,6 +394,11 @@ export const caseLoad = (casesDir: string, file: string): TestCase => {
             config:     spec.fixture?.config ?? null,
             tasks:      (spec.fixture?.tasks ?? []).map((task) => resolve(task, "task")),
             files:      spec.fixture?.files !== undefined ? resolve(spec.fixture.files, "files") : "",
+            nodeModules: (spec.fixture?.nodeModules ?? []).map((pkg) => {
+                if (!fs.existsSync(path.join(casesHarnessRoot, "node_modules", pkg, "package.json")))
+                    throw new Error(`case "${name}": fixture node module "${pkg}" is not installed in the harness`)
+                return pkg
+            }),
             change:     spec.fixture?.change !== undefined ? {
                 files:      resolve(spec.fixture.change.files, "change"),
                 delete:     spec.fixture.change.delete !== undefined ?

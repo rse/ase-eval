@@ -92,6 +92,12 @@ const sandboxPopulate = async (caze: TestCase, root: string): Promise<Sandbox> =
     env.ASE_HEADLESS       = "true"
     env.GIT_TERMINAL_PROMPT = "0"
     env.MCP_TIMEOUT        = process.env.MCP_TIMEOUT ?? "120000"
+
+    /*  optionally load all MCP tool schemas upfront instead of deferring them behind
+        "ToolSearch", whose "tool_reference" results a gateway may not expand for
+        non-Anthropic models (see https://code.claude.com/docs/en/mcp.md)  */
+    if (process.env.ASE_TEST_TOOL_SEARCH === "off")
+        env.ENABLE_TOOL_SEARCH = "false"
     credentials(home, env)
 
     /*  optionally route the sessions through an Anthropic-compatible gateway (e.g. a
@@ -155,6 +161,28 @@ const sandboxPopulate = async (caze: TestCase, root: string): Promise<Sandbox> =
         }
         const { stdout } = await git(sandbox, [ "rev-parse", "HEAD" ])
         sandbox.baseRef = stdout.trim()
+    }
+
+    /*  link the requested packages of the harness (e.g. "typescript", which the
+        fixtures declare but never install) into the project, so a session can run
+        its build instead of searching the host for it, invisible to Git (and with
+        it to every changeset and "gitDiff" oracle)  */
+    if (caze.fixture.nodeModules.length > 0) {
+        const modules = path.join(project, "node_modules")
+        await fs.promises.mkdir(path.join(modules, ".bin"), { recursive: true })
+        for (const name of caze.fixture.nodeModules) {
+            const source = path.join(harnessRoot, "node_modules", name)
+            const target = path.join(modules, name)
+            await fs.promises.mkdir(path.dirname(target), { recursive: true })
+            await fs.promises.symlink(source, target, "dir")
+            const pkg = JSON.parse(await fs.promises.readFile(path.join(source, "package.json"), "utf8")) as
+                { name?: string, bin?: string | Record<string, string> }
+            const bins = typeof pkg.bin === "string" ? { [(pkg.name ?? name).replace(/^@[^/]+\//, "")]: pkg.bin } : (pkg.bin ?? {})
+            for (const [ bin, file ] of Object.entries(bins))
+                await fs.promises.symlink(path.join(source, file), path.join(modules, ".bin", bin), "file")
+        }
+        if (caze.fixture.git)
+            await fs.promises.appendFile(path.join(project, ".git", "info", "exclude"), "node_modules/\n", "utf8")
     }
 
     /*  pre-start the ASE service of the project, so the MCP server of the plugin

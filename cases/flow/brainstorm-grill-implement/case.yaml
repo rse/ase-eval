@@ -33,6 +33,9 @@ stages:
   - skill: ase-task-implement
     args: "--next DONE roman"
     timeoutSec: 900
+    #   a single-shot stage, whose default cap of 32 agentic turns a model
+    #   working in many small edits (and test runs) reaches while progressing
+    maxAgentTurns: 64
     budget: { maxUsd: 3.00 }
     oracles:
       - fileExists: roman.py

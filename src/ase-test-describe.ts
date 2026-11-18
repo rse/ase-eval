@@ -182,6 +182,8 @@ export const describeCase = (caze: TestCase): string => {
         fixture.push(`change commit "${caze.fixture.change.message}" of ` +
             `files "${path.relative(caze.dir, caze.fixture.change.files)}"` +
             (caze.fixture.change.delete.length > 0 ? ` (deleting ${caze.fixture.change.delete.join(", ")})` : ""))
+    if (caze.fixture.nodeModules.length > 0)
+        fixture.push(`linked node modules of the harness [ ${caze.fixture.nodeModules.join(", ")} ] (Git-excluded)`)
     lines.push(`    fixture:   ${fixture.join(", ")}`)
     if (!caze.staged && caze.stages[0].permissionMode !== "auto")
         lines.push(`    mode:      ${caze.stages[0].permissionMode} permission mode ` +

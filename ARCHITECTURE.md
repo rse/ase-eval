@@ -89,7 +89,9 @@ A timeout is never retried, as it is the most expensive failure mode.
 A failed evaluation (e.g. a judge timeout) retries only the oracles and
 ends as an infrastructure `error`. A gateway error (e.g. `Couldn't load
 settings from Cloud gateway`, HTTP 5xx) pauses all workers of all
-runners through a shared outage file. A SIGINT/SIGTERM aborts all live
+runners through a shared outage file, and a timeout, stall, or turn-cap hit
+amid the agent tool's own API retries (`system/api_retry`) is a gateway error,
+too. An SDK which does not end within 15 s after an abort is left behind. A SIGINT/SIGTERM aborts all live
 sessions, tears down their sandboxes, and writes the final summary.
 
 ## 4. One Run (Attempt)

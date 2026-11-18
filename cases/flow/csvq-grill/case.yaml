@@ -12,7 +12,7 @@ stages:
       "sample.csv" in the project shows the kind of data it has to handle.
       The tool must read the CSV data from stdin and write its result to
       stdout.
-    timeoutSec: 600
+    timeoutSec: 900
     budget: { maxUsd: 2.00 }
     turns:
       simulator: llm
@@ -39,6 +39,9 @@ stages:
   - skill: ase-task-implement
     args: "--next DONE csvq"
     timeoutSec: 900
+    #   a single-shot stage, whose default cap of 32 agentic turns a model
+    #   working in many small edits (and test runs) reaches while progressing
+    maxAgentTurns: 64
     budget: { maxUsd: 3.00 }
     oracles:
       - fileExists: csvq.py

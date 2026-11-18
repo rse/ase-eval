@@ -58,6 +58,12 @@ const replayText = (file, dir = TESTDATA_DIR) => transcriptFacts(fs.readFileSync
     check("parser: Windows path", s.findings[0].location.file === "C:/Temp/ase-rr-x/shop/src/api.ts" && s.findings[0].location.from === 34)
     const t = parseReview(review([ row("ACCEPTED", "▢ `src/notify.ts:7`") ]))
     check("parser: severity ACCEPTED", t.findings[0].severity === "ACCEPTED")
+    const table = "| Severity | Dimension | Finding |\n| --- | --- | --- |\n" + row("HIGH", "▢ `src/cart.ts:30`") + "\n"
+    const nv1 = parseReview(table)
+    check("parser: a findings table without a verdict line is unparseable by default", nv1.status === "unparseable")
+    const nv2 = parseReview(table, { requireVerdict: false })
+    check("parser: without \"requireVerdict\", a findings table without a verdict line is parsed (verdict null)",
+        nv2.status === "ok" && nv2.verdict === null && nv2.findings.length === 1)
     const u = parseReview(review([ "| **HIGH** | correctness | the change breaks the build |" ]))
     check("parser: finding without location", u.status === "ok" && u.findings[0].location === null)
     const v = parseReview("◉ **REVIEW VERDICT**: **APPROVE**\n\n○ **NO FINDINGS**: the change is clean, nothing to flag.\n")

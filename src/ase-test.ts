@@ -4,8 +4,9 @@
 **  Licensed under Apache 2.0 <https://spdx.org/licenses/Apache-2.0>
 */
 
-import * as fs   from "node:fs"
-import * as path from "node:path"
+import * as crypto from "node:crypto"
+import * as fs     from "node:fs"
+import * as path   from "node:path"
 
 import { Command } from "commander"
 import picomatch   from "picomatch"
@@ -52,6 +53,8 @@ program
     .option("-t, --time-factor <n>", "factor applied to the timeouts of all cases and stages " +
         "(default: $ASE_TEST_TIME_FACTOR, else 1)")
     .option("--allow-stale", "run even if the tool build is older than its sources", false)
+    .option("--tool-search <mode>", "\"off\" loads all MCP tool schemas upfront instead of " +
+        "deferring them behind \"ToolSearch\" (default: $ASE_TEST_TOOL_SEARCH, else \"on\")")
     .option("-r, --results <dir>", "results directory (default: results/<timestamp>)")
     .option("--llm <file>", "env-file profile for an Anthropic-compatible " +
         "gateway (default: $ASE_TEST_LLM)")
@@ -70,6 +73,15 @@ if (llmProfile !== undefined && llmProfile !== "") {
         process.exit(2)
     }
     process.loadEnvFile(file)
+}
+
+/*  the tool search mode of the sessions (read by the sandbox environment)  */
+if (opts.toolSearch !== undefined) {
+    if (opts.toolSearch !== "on" && opts.toolSearch !== "off") {
+        console.error(chalk.red(`invalid --tool-search value: "${opts.toolSearch}" (expected "on" or "off")`))
+        process.exit(2)
+    }
+    process.env.ASE_TEST_TOOL_SEARCH = opts.toolSearch
 }
 
 /*  discover and filter the cases  */
@@ -273,6 +285,14 @@ const outageWait = async (): Promise<void> => {
         await pause(ms)
 }
 
+/*  whether a session ended (timeout, stall, or turn cap) while the agent tool
+    itself was retrying failed API calls (e.g. HTTP 504 of the gateway): such
+    an end says nothing about the model, unlike an end long after a retry  */
+const GATEWAY_RETRY_WINDOW_MS = 180 * 1000
+const endedInApiRetries = (r: SessionResult): boolean =>
+    (r.timedOut || r.stalled || r.stopReason === "error_max_turns") && r.lastApiRetryAt > 0
+    && Date.now() - r.lastApiRetryAt <= GATEWAY_RETRY_WINDOW_MS
+
 /*  the number of "ase_task_save" calls of one session beyond which it is
     considered a save loop (diagnostic only)  */
 const SAVE_LOOP_MAX = 5
@@ -371,6 +391,12 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
             simFailed:    last.simFailed,
             budgetHit:    last.budgetHit,
             apiFlaky:     results.map((r) => r.apiFlaky).find((text) => text !== "") ?? "",
+            apiRetries:   results.reduce((sum, r) => sum + r.apiRetries, 0),
+            apiRetryText: last.apiRetryText,
+            lastApiRetryAt: last.lastApiRetryAt,
+            stallAt:      last.stallAt,
+            abortAt:      last.abortAt,
+            sdkHung:      last.sdkHung,
             costBasis:    ([ "unpriced", "table", "sdk" ] as CostBasis[])
                 .find((basis) => results.some((r) => r.costBasis === basis)) ?? "sdk"
         }
@@ -406,10 +432,17 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
         }
         else if (caze.staged && last.errored) {
             /*  an errored stage of a staged case fails the run without evaluating
-                the top-level oracles, as the remaining stages were skipped  */
+                the top-level oracles, as the remaining stages were skipped, unless
+                it ended amid the agent tool's own API retries (a gateway error)  */
             outcome.outcome = "fail"
             outcome.failure = `${where} errored: ${last.failure}`
             outcome.oracles = diagnostics
+            if (endedInApiRetries(last)) {
+                outcome.outcome   = "error"
+                outcome.infraKind = "gateway"
+                outcome.failure   = `${where} ended amid API retries (${last.apiRetries}x, last: ${last.apiRetryText}): ${last.failure}`
+                retry             = !retried
+            }
             await transcriptFinish(transcript, caze, sandbox, result, "", diagnostics, false, stages)
         }
         else {
@@ -476,7 +509,14 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
                 /*  a failed run whose session saw a gateway or server error (e.g. a
                     sub-agent hit by an HTTP 503) says nothing about the model, so it is
                     an infrastructure error and retried, while a passed run stays passed  */
-                if (outcome.outcome === "fail" && result.apiFlaky !== "") {
+                if (outcome.outcome === "fail" && endedInApiRetries(last)) {
+                    outcome.outcome   = "error"
+                    outcome.infraKind = "gateway"
+                    outcome.failure   = `session ended amid API retries (${last.apiRetries}x, ` +
+                        `last: ${last.apiRetryText}): ${result.failure}`
+                    retry             = !retried
+                }
+                else if (outcome.outcome === "fail" && result.apiFlaky !== "") {
                     outcome.outcome   = "error"
                     outcome.infraKind = "api"
                     outcome.failure   = `API error inside the session: ${result.apiFlaky}`
@@ -580,6 +620,7 @@ const meta = {
     toolBuilt:    toolBuilt.toISOString(),
     budgetFactor: String(budgetFactor),
     timeFactor:   String(timeFactor),
+    toolSearch:   process.env.ASE_TEST_TOOL_SEARCH ?? "on",
     sdkVersion,
     nodeVersion:  process.version
 }
@@ -610,6 +651,38 @@ const aggregate = (why: string): CaseOutcome[] => cases.map((caze) => {
     return caseAggregate(caze.name, caze.skill, runs, caze.minPass)
 })
 
+/*  the run lock: a warning about another live harness run on the same endpoint
+    (outside of this launcher, i.e. with another outage file), as parallel runs
+    compete for the gateway without sharing its outage state  */
+const lockDir  = path.join(harnessRoot, "results")
+const lockKey  = crypto.createHash("sha1").update(process.env.ANTHROPIC_BASE_URL ?? "default").digest("hex").slice(0, 8)
+const lockFile = path.join(lockDir, `.running-${lockKey}-${process.pid}`)
+const lockAlive = (pid: number): boolean => {
+    try {
+        process.kill(pid, 0)
+        return true
+    }
+    catch (_err) {
+        return false
+    }
+}
+fs.mkdirSync(lockDir, { recursive: true })
+for (const entry of fs.readdirSync(lockDir).filter((name) => name.startsWith(`.running-${lockKey}-`))) {
+    const pid = Number(entry.split("-").at(-1))
+    if (!Number.isInteger(pid) || pid === process.pid)
+        continue
+    if (!lockAlive(pid)) {
+        fs.rmSync(path.join(lockDir, entry), { force: true })
+        continue
+    }
+    const other = fs.readFileSync(path.join(lockDir, entry), "utf8").trim()
+    if (other !== outageFile)
+        console.log(chalk.yellow(`⚠ another harness run uses the same endpoint (pid ${pid}) without sharing ` +
+            "its gateway outage state -- results may suffer from the competition"))
+}
+fs.writeFileSync(lockFile, outageFile, "utf8")
+const lockRelease = (): void => { fs.rmSync(lockFile, { force: true }) }
+
 /*  an interrupt (SIGINT/SIGTERM) stops the scheduling, aborts all live sessions,
     and lets the workers tear down their sandboxes and the final summary be
     written, while a second interrupt exits immediately  */
@@ -618,6 +691,7 @@ const onInterrupt = (signal: string) => {
     interrupts += 1
     if (interrupts > 1) {
         summaryWrite(resultsDir, aggregate("interrupted"), spentUsd(), llmSpend.usd, "interrupted", meta)
+        lockRelease()
         process.exit(130)
     }
     console.log(chalk.yellow(`⚠ ${signal} received -- aborting all live sessions ` +
@@ -680,6 +754,7 @@ console.log(`running ${work.length} run(s) of ${cases.length} case(s) ` +
 await Promise.all(Array.from({ length: Math.min(jobs, work.length) }, (_v, index) => worker(index)))
 if (!outageShared)
     fs.rmSync(outageFile, { force: true })
+lockRelease()
 
 /*  aggregate the outcomes per case (pass@k) and report  */
 const outcomes = aggregate(aborted !== "" ? aborted : "not run")

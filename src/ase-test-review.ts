@@ -45,7 +45,7 @@ const { listFiles }          = await lib<{ listFiles: (dir: string) => string[] 
 const { findLeak }           = await lib<{ findLeak: (text: string) => string | null }>("leak.mjs")
 const { checkContamination } = await lib<{ checkContamination: (events: unknown[]) => string[] }>("runner.mjs")
 const { evaluateRun, aggregate } = await lib<{
-    evaluateRun: (run: Record<string, unknown>, expected: unknown) => Evaluated
+    evaluateRun: (run: Record<string, unknown>, expected: unknown, options?: { requireVerdict?: boolean }) => Evaluated
     aggregate:   (runs: Evaluated[], thresholds: unknown) => Aggregated
 }>("scoring.mjs")
 
@@ -87,20 +87,25 @@ export const reviewScore = (text: string, expectedFile: string, thresholdsFile: 
         return { kind: "review", pass: false, log: text, detail: `contamination: ${contamination.join("; ")}` }
     const expected   = JSON.parse(fs.readFileSync(expectedFile,   "utf8")) as unknown
     const thresholds = JSON.parse(fs.readFileSync(thresholdsFile, "utf8")) as unknown
-    const run        = evaluateRun({ name: "run", status: "ok", review: text }, expected)
+    /*  a review without a verdict line is scored anyway (its recall stays visible),
+        but fails for the missing verdict  */
+    const run        = evaluateRun({ name: "run", status: "ok", review: text }, expected, { requireVerdict: false })
 
     /*  an unrecognizable output never counts silently as "no findings"  */
     if (run.status !== "ok" || run.recall === undefined)
         return {
             kind: "review", pass: false, log: text, metrics: { ...run },
-            detail: "review output unparseable (no verdict or findings table)"
+            detail: "review output unparseable (no findings table and no no-findings statement)"
         }
     const agg    = aggregate([ run ], thresholds)
     const failed = Object.entries(agg.threshold.criteria).filter(([ , c ]) => !c.met)
         .map(([ name, c ]) => `${name} ${ratio(c.value)} ${c.kind === "min" ? "<" : ">"} ${c.limit}`)
+    const noVerdict = (run.verdict ?? null) === null
+    if (noVerdict)
+        failed.unshift("verdict missing")
     return {
         kind:    "review",
-        pass:    agg.threshold.verdict === "threshold met",
+        pass:    agg.threshold.verdict === "threshold met" && !noVerdict,
         log:     text,
         metrics: { ...run, threshold: agg.threshold },
         detail:  `recall ${ratio(run.recall.overall)} (obvious ${ratio(run.recall.obvious)}, ` +

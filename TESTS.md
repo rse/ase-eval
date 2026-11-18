@@ -26,6 +26,7 @@ via `npm start test -- <options>` and the `run_*.sh` scripts.
 | `-r, --results <dir>`    | results directory (default: `results/<timestamp>`)                   |
 | `-C, --cases-dir <dir>`  | cases directory (default: `cases`; e.g. `uplift` for the uplift benchmark) |
 | `--llm <file>`           | gateway profile (default: `$ASE_TEST_LLM`)                           |
+| `--tool-search <mode>`   | `off` loads all MCP tool schemas upfront (`ENABLE_TOOL_SEARCH=false` in the sessions) instead of deferring them behind `ToolSearch` (default: `$ASE_TEST_TOOL_SEARCH`, else `on`) |
 
 `run_all_tests.sh` additionally takes `--force-model <model>`, which
 forces the session, sub-agent, judge, and simulator models onto one
@@ -171,6 +172,7 @@ review cases live in `cases/review/<name>/` (see `docs/review/README.md`).
 | `timeoutSec`                              | `300`              | wall-clock limit of one session                               |
 | `budget.maxUsd`                           | `2.00`             | per run, see "Budget and Retries"                             |
 | `fixture.lifecycle`                       | `solo`             | lifecycle of the seeded task store                            |
+| `fixture.nodeModules`                     | `[]`               | packages of the harness `node_modules/` (incl. their `.bin` entries) symlinked into the project, Git-excluded, e.g. `[ typescript ]` for a fixture declaring but not installing it |
 | `turns.maxTurns`                          | `16`               | *user* turns; the agentic turn cap is 4×, resp. 32 single-shot |
 | `maxAgentTurns`                           | see `turns.maxTurns` | overrides the agentic turn cap (also per stage)             |
 | `turns.model`                             | `claude-haiku-5-5` | `llm` simulator only; precedence: `$ASE_TEST_SIM_FORCE`, `turns.model`, `$ASE_TEST_SIM_MODEL`, default |
@@ -257,7 +259,18 @@ sessions use the automatic permission mode of the agent tool.
     and `thinking_tokens` estimates) counts only once it adds up to
     `$ASE_TEST_STALL_MIN_TOKENS` tokens (default `50`), so a stream
     trickling a few tokens for minutes is caught, too. Every message of
-    `transcript.jsonl` carries its receive time as `_receivedAt`.
+    `transcript.jsonl` carries its receive time as `_receivedAt`. Once a
+    minute, a `{"type":"harness","subtype":"stream_heartbeat"}` line records
+    the streamed partial messages (counts per event type, characters, and
+    the tail of the streamed text). A stall wins over a later timeout, and
+    `result.json` records `stalled`, `stallAt`, `abortAt`, `sdkHung`, and
+    `apiRetries`. An SDK which does not end its stream within 15 s after an
+    abort is left behind (`sdkHung`), so no session outlasts its abort.
+-   A run which timed out, stalled, or hit the turn cap while the agent tool
+    itself was retrying failed API calls (`system/api_retry`, e.g. after an
+    HTTP 504 of the gateway, the last one at most 180 s before its end) is an
+    infrastructure error (`gateway`) and retried after the outage pause; an
+    `api_retry` never counts as progress of the stall watchdog.
 -   After 3 consecutive infrastructure errors (other than gateway
     outages), the workers pause before scheduling further runs (60 s,
     doubling up to 300 s).
@@ -310,6 +323,10 @@ sessions use the automatic permission mode of the agent tool.
 -   `npm start clean-sandboxes` (`etc/clean-sandboxes.sh [--dry-run]`)
     removes the leftover `/tmp/ase-test-*` sandboxes of killed runs
     (older than one minute) and stops their `ase service` processes.
+-   A harness run warns at its start about another live harness run on the
+    same endpoint which does not share its gateway outage state (i.e. which
+    was not started by the same launcher), through the lock files
+    `results/.running-<endpoint-hash>-<pid>`.
 
 ## Sandboxing
 

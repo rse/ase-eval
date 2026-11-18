@@ -131,6 +131,11 @@ export const transcriptFinish = async (transcript: Transcript, caze: TestCase, s
         costUsd:   result.costUsd,
         errored:   result.errored,
         timedOut:  result.timedOut,
+        stalled:   result.stalled,
+        stallAt:   result.stallAt,
+        abortAt:   result.abortAt,
+        sdkHung:   result.sdkHung,
+        apiRetries: result.apiRetries,
         failure:   result.failure,
         oracles,
         ...(caze.staged ? { stages } : {})

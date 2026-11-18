@@ -39,8 +39,11 @@ export type SessionRecord = {
     "stalled" one aborted by the watchdog after a too long silence, "simFailed"
     one whose simulator failed, "budgetHit" one aborted by the table-priced
     budget watchdog, "apiFlaky" the first gateway or server error seen inside
-    the session (e.g. a sub-agent hit by an HTTP 503), and "costBasis" tells
-    how "costUsd" was priced)  */
+    the session (e.g. a sub-agent hit by an HTTP 503), "apiRetries" and
+    "lastApiRetryAt" the API retries of the agent tool itself (e.g. after an
+    HTTP 504 of the gateway), "stallAt"/"abortAt" when the stall watchdog fired
+    resp. the session was aborted, "sdkHung" a session whose SDK did not end
+    after the abort, and "costBasis" tells how "costUsd" was priced)  */
 export type SessionResult = {
     messages:     Record<string, any>[]
     output:       string[]
@@ -62,6 +65,12 @@ export type SessionResult = {
     simFailed:    boolean
     budgetHit:    boolean
     apiFlaky:     string
+    apiRetries:   number
+    apiRetryText: string
+    lastApiRetryAt: number
+    stallAt:      string
+    abortAt:      string
+    sdkHung:      boolean
     costBasis:    CostBasis
 }
 
@@ -82,7 +91,8 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
     const result: SessionResult = {
         messages: [], output: [], lastText: "", dialog: [], sessionId: "", model: "",
         costUsd: 0, costAccurate: true, turns: 0, errored: false, crashed: false, timedOut: false, stalled: false, failure: "",
-        stopReason: "", apiStatus: null, mcpFailed: false, simFailed: false, budgetHit: false, apiFlaky: "", costBasis: "sdk"
+        stopReason: "", apiStatus: null, mcpFailed: false, simFailed: false, budgetHit: false, apiFlaky: "",
+        apiRetries: 0, apiRetryText: "", lastApiRetryAt: 0, stallAt: "", abortAt: "", sdkHung: false, costBasis: "sdk"
     }
     const prompt = stage.skill !== "" ? skillPrompt(stage.skill, stage.args) : stage.prompt
 
@@ -125,13 +135,26 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         if (timer !== null)
             clearTimeout(timer)
         timer = setTimeout(() => {
-            if (finished)
+            if (finished || result.stalled)
                 return
             result.timedOut = true
             abort.abort()
         }, Math.max(0, deadline - Date.now()))
     }
     deadlineArm()
+
+    /*  the hard end after an abort (timeout, stall, budget, simulator, interrupt):
+        an SDK which does not end its message stream within the grace period is
+        left behind, so a wedged session can never outlast its own abort  */
+    const SDK_GRACE_MS = 15 * 1000
+    const FORCED       = Symbol("forced")
+    let   graceTimer: ReturnType<typeof setTimeout> | null = null
+    const forced = new Promise<typeof FORCED>((resolve) => {
+        abort.signal.addEventListener("abort", () => {
+            result.abortAt = new Date().toISOString()
+            graceTimer = setTimeout(() => { resolve(FORCED) }, SDK_GRACE_MS)
+        }, { once: true })
+    })
 
     /*  the stall watchdog: abort a session without any SDK message (incl. the
         streamed partial messages) for "stallSec", e.g. a hanging gateway stream,
@@ -158,6 +181,7 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
             if (finished || result.timedOut)
                 return
             result.stalled = true
+            result.stallAt = new Date().toISOString()
             abort.abort()
         }, stallSec * 1000)
     }
@@ -176,6 +200,8 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
             else
                 return true
         }
+        else if (msg.type === "system" && msg.subtype === "api_retry")
+            return false
         else if (msg.type === "system" && msg.subtype === "thinking_tokens")
             tokens = Number(msg.estimated_tokens_delta ?? 1)
         else
@@ -287,19 +313,55 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         record.onMessage({ type: "user", synthetic: true, message: { role: "user", content: text } })
     }
 
+    /*  the stream heartbeat: the streamed partial messages are not recorded one
+        by one, so once a minute their event types, the streamed characters, and
+        the tail of the streamed text are recorded, which tells a model streaming
+        one huge block from a stuck gateway stream afterwards  */
+    let streamCounts: Record<string, number> = {}
+    let streamChars = 0
+    let streamTail  = ""
+    const streamNote = (event: Record<string, any>) => {
+        const type  = String(event.type ?? "?")
+        const delta = event.delta ?? {}
+        const text  = String(delta.text ?? delta.thinking ?? delta.partial_json ?? "")
+        const key   = type === "content_block_delta" ? `${type}/${String(delta.type ?? "?")}` : type
+        streamCounts[key] = (streamCounts[key] ?? 0) + 1
+        streamChars += text.length
+        streamTail   = (streamTail + text).slice(-200)
+    }
+    const heartbeat = setInterval(() => {
+        if (Object.keys(streamCounts).length === 0)
+            return
+        record.onMessage({ type: "harness", subtype: "stream_heartbeat", counts: streamCounts, chars: streamChars, tail: streamTail })
+        streamCounts = {}
+        streamChars  = 0
+    }, 60 * 1000)
+
     /*  drive the conversation  */
     sendUser(prompt)
     let userTurns = 1
     try {
-        const session = query({ prompt: input(), options })
+        const session  = query({ prompt: input(), options })
+        const iterator = session[Symbol.asyncIterator]()
         stallArm()
-        for await (const msg of session) {
+        while (true) {
+            const step = await Promise.race([ iterator.next(), forced ])
+            if (step === FORCED) {
+                result.sdkHung = true
+                iterator.return?.(undefined)?.catch(() => { /*  ignore  */ })
+                throw new Error(`SDK did not end within ${SDK_GRACE_MS / 1000}s after the abort`)
+            }
+            if (step.done === true)
+                break
+            const msg = step.value
             if (progress(msg as Record<string, any>))
                 stallArm()
 
             /*  the streamed partial messages only prove the session alive  */
-            if (msg.type === "stream_event")
+            if (msg.type === "stream_event") {
+                streamNote((msg as { event?: Record<string, any> }).event ?? {})
                 continue
+            }
             if (planApproved && !planSwitched) {
                 planSwitched = true
                 await session.setPermissionMode("acceptEdits")
@@ -309,6 +371,13 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
             if (msg.type === "system" && msg.subtype === "init") {
                 result.sessionId = msg.session_id
                 result.model     = msg.model
+            }
+            else if (msg.type === "system" && (msg as { subtype?: string }).subtype === "api_retry") {
+                /*  an API retry of the agent tool itself (e.g. after an HTTP 504 of the gateway)  */
+                const retry = msg as { error_status?: number | null, error?: string }
+                result.apiRetries    += 1
+                result.lastApiRetryAt = Date.now()
+                result.apiRetryText   = `API Error: ${retry.error_status ?? retry.error ?? "unknown"} (agent tool retry)`
             }
             else if (msg.type === "user") {
                 /*  an unconnected ASE MCP server is reported to the model only through
@@ -398,13 +467,18 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         else if (result.stopReason === "" || result.timedOut || result.stalled) {
             result.crashed      = !result.timedOut && !result.stalled
             result.costAccurate = false
-            result.failure      = result.timedOut ? `timeout after ${stage.timeoutSec}s` :
-                result.stalled ? `stall: no message for ${stallSec}s` :
+            result.failure      = result.stalled ? `stall: no progress for ${stallSec}s` :
+                result.timedOut ? `timeout after ${stage.timeoutSec}s` :
                     `session crashed: ${err instanceof Error ? err.message : String(err)}`
         }
+        if (result.sdkHung && !/SDK did not end/.test(result.failure))
+            result.failure += ` (SDK did not end within ${SDK_GRACE_MS / 1000}s after the abort)`
     }
     finally {
         finished = true
+        clearInterval(heartbeat)
+        if (graceTimer !== null)
+            clearTimeout(graceTimer)
         if (timer !== null)
             clearTimeout(timer)
         stallDisarm()
@@ -417,17 +491,17 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         result.costUsd   = liveUsd
         result.costBasis = "table"
     }
-    if (result.timedOut) {
+    if (result.stalled) {
+        result.errored      = true
+        result.costAccurate = false
+        if (result.failure === "")
+            result.failure = `stall: no progress for ${stallSec}s`
+    }
+    else if (result.timedOut) {
         result.errored      = true
         result.costAccurate = false
         if (result.failure === "")
             result.failure = `timeout after ${stage.timeoutSec}s`
-    }
-    else if (result.stalled) {
-        result.errored      = true
-        result.costAccurate = false
-        if (result.failure === "")
-            result.failure = `stall: no message for ${stallSec}s`
     }
     return result
 }

@@ -62,8 +62,10 @@ export function parseLocation (text) {
     return location
 }
 
-/*  parse the review text  */
-export function parseReview (text) {
+/*  parse the review text, where a review counts as parsed only with a verdict
+    line, unless "requireVerdict" is false (then findings or a no-findings
+    statement suffice, and a missing verdict stays visible as a null verdict)  */
+export function parseReview (text, { requireVerdict = true } = {}) {
     const result = { status: "unparseable", verdict: null, findings: [], noFindings: false, hidden: 0 }
     if (typeof text !== "string")
         return result
@@ -91,7 +93,7 @@ export function parseReview (text) {
             text:      finding
         })
     }
-    if (result.verdict !== null && (result.findings.length > 0 || result.noFindings))
+    if ((result.verdict !== null || !requireVerdict) && (result.findings.length > 0 || result.noFindings))
         result.status = "ok"
     return result
 }

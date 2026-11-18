@@ -12,6 +12,9 @@ fixture:
     git: true
     config: { project: { id: shop, name: Shop, boxing: white } }
     files: fixture/base
+    #   the fixture declares "typescript" without installing it: link the one of
+    #   the harness, so a session can type-check instead of searching the host
+    nodeModules: [ typescript ]
     change:
         files:   fixture/change
         message: "Add returns, partial refunds and store credit"

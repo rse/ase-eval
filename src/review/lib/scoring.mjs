@@ -12,8 +12,9 @@ import { assignAll }            from "./matching.mjs"
 /*  rank of the severities of the skill, for the minimum severity of a finding  */
 export const SEVERITY_RANK = { HIGH: 3, MEDIUM: 2, LOW: 1 }
 
-/*  evaluate a single run from its status and review text  */
-export function evaluateRun (run, expected) {
+/*  evaluate a single run from its status and review text (with the parser options
+    "options", e.g. "requireVerdict: false" to score a review without a verdict)  */
+export function evaluateRun (run, expected, options = {}) {
     const out = {
         name:     run.name,
         status:   run.status,
@@ -25,7 +26,7 @@ export function evaluateRun (run, expected) {
     }
     if (run.status !== "ok" && run.status !== "unparseable")
         return out
-    const parsed = parseReview(run.review)
+    const parsed = parseReview(run.review, options)
     out.status   = parsed.status
     out.verdict  = parsed.verdict
     const findings = parsed.status === "ok" ? assignAll(parsed.findings, expected) : []

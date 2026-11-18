@@ -20,6 +20,9 @@ export const DOCS_DIR      = path.join(HARNESS_DIR, "docs", "review")
 export const TESTDATA_DIR  = path.join(REVIEW_DIR, "testdata")
 export const RESULTS_DIR   = path.join(HARNESS_DIR, "results", "review")
 
+/*  the prompt of the baseline condition: the whole file is the prompt  */
+export const BASELINE_PROMPT_FILE = path.join(REVIEW_DIR, "baseline-prompt.md")
+
 /*  the test cases: every case lives under cases/review/<name>/, and its case.yaml
     (also read by the skill harness) is the only source of its change commit message
     (design rationale: DESIGN.md)  */

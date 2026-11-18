@@ -7,6 +7,7 @@ import path from "node:path"
 
 import { HARNESS_DIR, DEFAULT_CASE, git, readJson, sha256 } from "./common.mjs"
 import { evaluateRun, aggregate, calibrate }             from "./scoring.mjs"
+import { conditionUsesAse }                              from "./runner.mjs"
 
 /*  collect completed result folders below the given paths (run.json is the completion mark)  */
 export function collectRunDirs (paths) {
@@ -34,7 +35,9 @@ export function loadRun (dir) {
         case:     meta.case ?? DEFAULT_CASE,
         status:   meta.status,
         reason:   meta.reason ?? null,
-        model:    (meta.model?.requested ?? "unknown") + (meta.dry_run ? " (dry run)" : ""),
+        /*  protocols without the condition field were written before the baseline existed  */
+        condition: meta.condition ?? "ase",
+        model:    (meta.condition ?? "ase") + ": " + (meta.model?.requested ?? "unknown") + (meta.dry_run ? " (dry run)" : ""),
         reported: meta.model?.reported ?? [],
         cost:     meta.cost_usd ?? null,
         duration: meta.duration_ms ?? null,
@@ -44,9 +47,9 @@ export function loadRun (dir) {
     }
 }
 
-/*  version of the threshold file of a case: last commit and dirty flag  */
-export function thresholdVersion (c) {
-    const rel = path.relative(HARNESS_DIR, c.thresholdFile).replace(/\\/g, "/")
+/*  version of a file of the harness repository: last commit and dirty flag  */
+function fileVersion (file) {
+    const rel = path.relative(HARNESS_DIR, file).replace(/\\/g, "/")
     let commit = null, dirty = true
     try {
         commit = git(HARNESS_DIR, [ "log", "-1", "--format=%H", "--", rel ]).trim() || null
@@ -58,6 +61,19 @@ export function thresholdVersion (c) {
     return { commit, modified: dirty }
 }
 
+/*  version of the threshold file of a case  */
+export function thresholdVersion (c) {
+    return fileVersion(c.thresholdFile)
+}
+
+/*  version of the prompt file of a condition  */
+export function promptVersion (file) {
+    return { file: path.basename(file), ...fileVersion(file) }
+}
+
+/*  verdict of a group the pilot thresholds say nothing about  */
+export const NOT_APPLICABLE = "threshold not applicable"
+
 /*  build the report data of a case  */
 export function buildReport (dirs, expected, c) {
     const thresholds = readJson(c.thresholdFile)
@@ -66,8 +82,15 @@ export function buildReport (dirs, expected, c) {
     const models     = [ ...new Set(evaluated.map((r) => r.model)) ].sort()
     const perModel   = {}
     for (const m of models) {
-        const runs = evaluated.filter((r) => r.model === m)
-        perModel[m] = { ...aggregate(runs, thresholds), run_details: runs }
+        const runs      = evaluated.filter((r) => r.model === m)
+        const condition = loaded.find((r) => r.model === m).condition
+        perModel[m] = { condition, ...aggregate(runs, thresholds), run_details: runs }
+        /*  thresholds and ceiling-effect check are set for the ASE setup; a group measured
+            without it keeps every figure, but gets neither a verdict nor a calibration  */
+        if (!conditionUsesAse(condition)) {
+            perModel[m].threshold = { verdict: NOT_APPLICABLE, criteria: {} }
+            continue
+        }
         const reported = runs.flatMap((r) => r.reported).join(" ")
         if (/opus/i.test(m) || /opus/i.test(reported))
             perModel[m].calibration = calibrate(runs)
@@ -96,8 +119,11 @@ export function renderMarkdown (report) {
         + `; file version \`${report.thresholds.file.commit ?? "not committed"}\``
         + (report.thresholds.file.modified ? " (**warning: uncommitted changes**)" : ""), "")
     for (const [ model, m ] of Object.entries(report.models)) {
-        out.push(`## Model ${model}`, "")
-        out.push(`Verdict: **${m.threshold.verdict}**`, "")
+        /*  one group per condition and model; the label starts with the condition  */
+        out.push(`## Configuration ${model}`, "")
+        out.push(`Verdict: **${m.threshold.verdict}**`
+            + (m.threshold.verdict === NOT_APPLICABLE
+                ? " (the pilot thresholds and the ceiling-effect check are set for the ASE condition)" : ""), "")
         if (m.calibration)
             out.push(`Calibration: **${m.calibration.statement ?? "–"}**`
                 + (m.calibration.next_step ? ` -- next step: ${m.calibration.next_step}` : ""), "")

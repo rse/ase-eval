@@ -8,20 +8,24 @@ import fs   from "node:fs"
 import os   from "node:os"
 import path from "node:path"
 
-import { REPO_DIR, TESTDATA_DIR, DEFAULT_CASE, resolveCase, readJson, sha256, stableStringify, git } from "./lib/common.mjs"
+import { TESTDATA_DIR, DEFAULT_CASE, resolveCase, readJson, sha256, stableStringify, git } from "./lib/common.mjs"
 import { buildCopy, removeCopy, fixtureDigest } from "./lib/copy.mjs"
 import { checkCopy }                            from "./lib/leak.mjs"
 import { parseReview }                          from "./lib/parser.mjs"
-import { thresholdVersion }                     from "./lib/report.mjs"
+import { thresholdVersion, promptVersion }      from "./lib/report.mjs"
 import {
-    PROMPT, claudeArgs, childEnv, envSummary, claudeProgram, runChild, checkInit, checkContamination,
+    claudeArgs, childEnv, envSummary, claudeProgram, runChild, checkInit, checkContamination,
     transcriptFacts, cliVersion, aseInfo, userAseConfig, createRunDir, stamp, modelShort, seriesAllows, isAlive,
-    mcpConfig, aseProcesses, killLeftovers
+    mcpConfig, aseProcesses, killLeftovers, conditionSpec, conformInit, toolBuilt, CONDITION_NAMES, DEFAULT_CONDITION
 } from "./lib/runner.mjs"
 
 const HELP = `Usage: node run.mjs [options]
 
   --case <name>             test case (default: correctness-cents)
+  --condition <name>        measurement condition: ${CONDITION_NAMES.join(", ")} (default: ${DEFAULT_CONDITION})
+                            "ase" runs the skill with the ASE plugin and MCP server,
+                            "baseline" runs the same model without both, with the prompt
+                            of baseline-prompt.md
   --model <model>           model for claude -p (default: sonnet)
   --runs <n>                number of runs (default: 1)
   --budget <usd>            cost limit per run (default: 5)
@@ -34,8 +38,9 @@ const HELP = `Usage: node run.mjs [options]
   --out <folder>            location of the result folders (default: results folder of the case)
   --keep                    keep the throw-away copy after the run
   --dry-run                 dry run without a model call
-  --replay <file>           canned stream-json transcript for the dry run
-                            (default: normal.jsonl in the testdata folder of the case)
+  --replay <file>           canned stream-json transcript for the dry run, replayed as it is
+                            (default: normal.jsonl in the testdata folder of the case,
+                            with its init event fitted to the condition)
   --simulate <case>         special case in the dry run: abort-cost, abort-time, unparseable, leak
   --help                    this help
 `
@@ -43,7 +48,7 @@ const HELP = `Usage: node run.mjs [options]
 /*  parse the command line  */
 function options (argv) {
     const o = {
-        caseName: DEFAULT_CASE,
+        caseName: DEFAULT_CASE, condition: DEFAULT_CONDITION,
         model: "sonnet", runs: 1, budget: 5, timeoutMin: 20, totalBudget: 30, priorSpent: 0,
         confirmPaid: false, baseUrl: null, authTokenEnv: null, out: null, keep: false,
         dryRun: false, replay: null, simulate: null
@@ -62,6 +67,7 @@ function options (argv) {
             return argv[++i]
         }
         if      (a === "--case")           o.caseName     = v()
+        else if (a === "--condition")      o.condition    = v()
         else if (a === "--model")          o.model        = v()
         else if (a === "--runs")           o.runs         = Math.max(1, Math.floor(num(v(), a)))
         else if (a === "--budget")         o.budget       = num(v(), a)
@@ -85,6 +91,7 @@ function options (argv) {
     if (!o.dryRun && (o.replay !== null || o.simulate !== null))
         throw new Error("--replay and --simulate only with --dry-run")
     o.case = resolveCase(o.caseName)
+    o.spec = conditionSpec(o.condition)
     o.out ??= o.case.resultsDir
     return o
 }
@@ -115,7 +122,14 @@ function preflight (o) {
     const tv = thresholdVersion(c)
     if (thresholds !== null && (tv.commit === null || tv.modified))
         problems.push(`${path.relative(process.cwd(), c.thresholdFile)} is not committed or modified: commit the threshold file before the measurement`)
-    if (!fs.existsSync(path.join(REPO_DIR, "tool", "dst", "ase.js")))
+    /*  a prompt file decides what the run is measured on, so it is fixed like the thresholds  */
+    if (o.spec.promptFile !== null) {
+        const pv = promptVersion(o.spec.promptFile)
+        if (pv.commit === null || pv.modified)
+            problems.push(`${pv.file} is not committed or modified: commit the prompt file before the measurement`)
+    }
+    /*  only a run with ASE starts the tool  */
+    if (o.spec.usesAse && !toolBuilt())
         problems.push("tool/ is not built: cd ../tool && npm start build")
     if (o.budget > 5 || o.totalBudget > 30)
         problems.push("limits above the approved values (5 USD per run, 30 USD in total)")
@@ -128,42 +142,54 @@ function preflight (o) {
 function dryEvents (o) {
     if (o.simulate === "abort-cost")
         return [
-            { type: "system", subtype: "init", model: "claude-sonnet-5-5", plugins: [ { name: "ase" } ], mcp_servers: [ { name: "ase", status: "connected" } ] },
+            conformInit({ type: "system", subtype: "init", model: "claude-sonnet-5-5" }, o.spec),
             { type: "result", subtype: "error_max_budget_usd", is_error: true, total_cost_usd: 5.03, modelUsage: { "claude-sonnet-5-5": {} }, permission_denials: [] }
         ]
-    /*  the normal transcript belongs to the case, the special cases are shared  */
-    const file = o.replay ?? (o.simulate === "unparseable"
+    const events = fs.readFileSync(dryFile(o), "utf8").split(/\r?\n/).filter((l) => l.trim() !== "").map((l) => JSON.parse(l))
+    /*  a transcript given with --replay is replayed as it is, so it can exercise the isolation
+        check; the transcripts of the benchmark itself are shared by all conditions, and their
+        init event is fitted to the condition of the run  */
+    if (o.replay !== null)
+        return events
+    return events.map((ev) => ev.type === "system" && ev.subtype === "init" ? conformInit(ev, o.spec) : ev)
+}
+
+/*  file the dry run replays: the normal transcript belongs to the case, the special case is shared  */
+function dryFile (o) {
+    return o.replay ?? (o.simulate === "unparseable"
         ? path.join(TESTDATA_DIR, "unparseable.jsonl")
         : path.join(o.case.testdataDir, "normal.jsonl"))
-    return fs.readFileSync(file, "utf8").split(/\r?\n/).filter((l) => l.trim() !== "").map((l) => JSON.parse(l))
 }
 
 /*  one run  */
 async function oneRun (o, nr, env, program, pre) {
     const started = new Date()
-    const name    = `${stamp(started)}-${modelShort(o.model)}-${nr}${o.dryRun ? "-dry" : ""}`
+    const name    = `${stamp(started)}-${o.condition}-${modelShort(o.model)}-${nr}${o.dryRun ? "-dry" : ""}`
     const dir     = createRunDir(o.out, name)
     const copy    = buildCopy(o.case)
     /*  MCP configuration outside the parent of the copy, so ".." does not lead to the repository path  */
     const mcpDir  = fs.mkdtempSync(path.join(os.tmpdir(), "ase-rr-mcp-"))
     const mcpFile = path.join(mcpDir, "ase-mcp.json")
-    fs.writeFileSync(mcpFile, JSON.stringify(mcpConfig(), null, 4))
-    const args    = claudeArgs({ ...o, mcpConfigFile: mcpFile })
-    const before  = o.dryRun ? [] : aseProcesses()
+    fs.writeFileSync(mcpFile, JSON.stringify(mcpConfig(o.spec), null, 4))
+    const args    = claudeArgs({ ...o, mcpConfigFile: mcpFile }, o.spec)
+    /*  ASE processes are looked for, and cleaned up afterwards, only by a run that can start any  */
+    const before  = o.dryRun || !o.spec.usesAse ? [] : aseProcesses()
     const meta    = {
         schema:          1,
         case:            o.case.name,
+        condition:       o.condition,
         status:          null,
         reason:          null,
         details:         [],
         dry_run:         o.dryRun,
         simulate:        o.simulate,
-        replay:          o.replay ? path.basename(o.replay) : (o.dryRun ? "normal.jsonl" : null),
+        replay:          o.dryRun ? path.basename(dryFile(o)) : null,
         model:           { requested: o.model, reported: [] },
         endpoint:        { base_url: safeUrl(o.baseUrl), token_set: Boolean(o.authTokenEnv) },
         child_env:       envSummary(env),
         cli_version:     o.dryRun ? null : cliVersion(program, pre),
         ase:             aseInfo(),
+        baseline_prompt: o.spec.promptFile !== null ? promptVersion(o.spec.promptFile) : null,
         user_ase_config: userAseConfig(),
         started_at:      started.toISOString(),
         duration_ms:     null,
@@ -171,7 +197,7 @@ async function oneRun (o, nr, env, program, pre) {
         budget_usd:      o.budget,
         timeout_min:     o.timeoutMin,
         permission_denials: null,
-        invocation:      { program: o.dryRun ? "(dry run)" : program, args: [ ...pre, ...args ], prompt: PROMPT, mcp_config: mcpConfig() },
+        invocation:      { program: o.dryRun ? "(dry run)" : program, args: [ ...pre, ...args ], prompt: o.spec.prompt, mcp_config: mcpConfig(o.spec) },
         init_plugins:    [],
         init_mcp:        [],
         leftovers_killed: [],
@@ -243,7 +269,7 @@ async function runInCopy (o, dir, copy, args, env, before, meta, finish, program
         fs.writeFileSync(path.join(dir, "transcript.jsonl"), events.map((e) => JSON.stringify(e)).join("\n") + "\n")
         fs.writeFileSync(path.join(dir, "stderr.txt"), "")
         const init = events.find((e) => e.type === "system" && e.subtype === "init")
-        const problems = init ? checkInit(init) : [ "no init event" ]
+        const problems = init ? checkInit(init, o.spec) : [ "no init event" ]
         if (problems.length > 0)
             stopped = { status: "error", reason: "isolation", details: problems }
     }
@@ -255,11 +281,11 @@ async function runInCopy (o, dir, copy, args, env, before, meta, finish, program
             program: child.program, args: child.args, cwd: copy.dir, env, timeoutMs,
             transcriptFile: path.join(dir, "transcript.jsonl"),
             stderrFile:     path.join(dir, "stderr.txt"),
-            onInit:         checkInit
+            onInit:         (ev) => checkInit(ev, o.spec)
         })
         events  = res.events
         stopped = res.stopped
-        if (!o.dryRun) {
+        if (!o.dryRun && o.spec.usesAse) {
             await new Promise((r) => setTimeout(r, 1000))
             meta.leftovers_killed = killLeftovers(before)
         }
@@ -289,7 +315,7 @@ async function runInCopy (o, dir, copy, args, env, before, meta, finish, program
         meta.reason = "cost"
         return finish(facts.text)
     }
-    const contamination = checkContamination(events)
+    const contamination = checkContamination(events, o.spec)
     if (contamination.length > 0) {
         meta.status  = "error"
         meta.reason  = "contamination"
@@ -332,7 +358,7 @@ async function main () {
     }
     let env
     try {
-        env = childEnv({ baseUrl: o.baseUrl, authTokenEnv: o.authTokenEnv })
+        env = childEnv({ baseUrl: o.baseUrl, authTokenEnv: o.authTokenEnv, toolOnPath: o.spec.usesAse })
     }
     catch (err) {
         process.stderr.write(`${err.message}\n`)

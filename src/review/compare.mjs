@@ -10,13 +10,13 @@ import path from "node:path"
 import { DEFAULT_CASE, resolveCase, stableStringify }       from "./lib/common.mjs"
 import { loadExpected }                                     from "./lib/expected.mjs"
 import { collectRunDirs, loadRun, buildReport, renderMarkdown } from "./lib/report.mjs"
-import { renderSection, appendJournal }                     from "./lib/journal.mjs"
+import { renderSection, appendJournal, defaultTitle }       from "./lib/journal.mjs"
 
 const USAGE = "Usage: node compare.mjs [--case <name>] [--out <folder>] [--journal <file> [--title <text>]] <result folder or parent folder>...\n"
     + "  --case <name>     test case (default: correctness-cents)\n"
     + "  --out <folder>    location of report.md and report.json (default: results folder of the case)\n"
     + "  --journal <file>  append the series as a new section to a measurement log (never rewrites entries)\n"
-    + "  --title <text>    heading of the new section (default: start date, case, and models)\n"
+    + "  --title <text>    heading of the new section (default: start date, case, conditions, and models)\n"
 const argv     = process.argv.slice(2)
 let   caseName = DEFAULT_CASE
 let   out      = null
@@ -75,12 +75,7 @@ for (const [ model, m ] of Object.entries(report.models))
 
 /*  append the series to the measurement log  */
 if (journal !== null) {
-    const first = dirs.map((d) => path.basename(d)).sort()[0]
-    const date  = /^(\d{4})(\d{2})(\d{2})T/.exec(first)
-    const entry = renderSection({
-        title: title ?? `${date ? `${date[1]}-${date[2]}-${date[3]}` : first}: ${c.name}, ${Object.keys(report.models).join(", ")}`,
-        dirs, report, expected, c
-    })
+    const entry = renderSection({ title: title ?? defaultTitle(dirs, c), dirs, report, expected, c })
     if (entry.dryRun) {
         process.stderr.write("dry runs are not logged; pass only result folders of real runs\n")
         process.exit(1)

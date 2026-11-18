@@ -11,18 +11,19 @@ import os            from "node:os"
 import path          from "node:path"
 import { spawnSync } from "node:child_process"
 
-import { REVIEW_DIR, TESTDATA_DIR, resolveCase, stableStringify, readJson } from "./lib/common.mjs"
+import { REVIEW_DIR, DOCS_DIR, TESTDATA_DIR, REPO_DIR, BASELINE_PROMPT_FILE, resolveCase, stableStringify, readJson } from "./lib/common.mjs"
 import { nodeIsRecent, translate, applyEdits, proveCase, renderProof }     from "./lib/proof.mjs"
-import { collectRunDirs, buildReport }             from "./lib/report.mjs"
-import { seriesId, renderSection, appendJournal }  from "./lib/journal.mjs"
+import { collectRunDirs, loadRun, buildReport, renderMarkdown } from "./lib/report.mjs"
+import { seriesId, renderSection, appendJournal, defaultTitle } from "./lib/journal.mjs"
 import { parseReview, parseLocation }              from "./lib/parser.mjs"
 import { buildCopy, removeCopy }                   from "./lib/copy.mjs"
 import { validateExpected }                        from "./lib/expected.mjs"
 import { assignFinding }                           from "./lib/matching.mjs"
 import { evaluateRun, aggregate, calibrate }       from "./lib/scoring.mjs"
 import { findLeak }                                from "./lib/leak.mjs"
-import { options as measureOptions, preflight as measurePreflight } from "./measure.mjs"
-import { seriesAllows, createRunDir, checkInit, claudeArgs, mcpConfig, checkContamination, runChild, childEnv, envSummary, transcriptFacts } from "./lib/runner.mjs"
+import { options as measureOptions, preflight as measurePreflight, seriesGaps, main as measureMain } from "./measure.mjs"
+import { seriesAllows, createRunDir, checkInit, claudeArgs, mcpConfig, checkContamination, runChild, childEnv, envSummary, transcriptFacts,
+    conditionSpec, conditionUsesAse, conformInit, normalizePrompt, DISALLOWED_TOOLS } from "./lib/runner.mjs"
 
 let passed = 0, failed = 0
 function check (name, cond, info = "") {
@@ -177,6 +178,125 @@ check("isolation: unconnected ASE MCP server is detected", checkInit({ plugins: 
     check("invocation: MCP tools mcp__ase__*", args.includes("mcp__ase__*") && !args.some((a) => a.includes("plugin_ase")))
     check("MCP configuration: exactly the server ase", eq(Object.keys(mcpConfig().mcpServers), [ "ase" ]) && mcpConfig().mcpServers.ase.args.at(-1) === "mcp")
 }
+
+/*  measurement conditions: isolation in both directions, invocation, grouping, compatibility  */
+{
+    const ase = conditionSpec("ase")
+    const bl  = conditionSpec("baseline")
+    check("condition: an unknown name is refused", (() => {
+        try {
+            conditionSpec("nope")
+            return false
+        }
+        catch (err) {
+            return true
+        }
+    })())
+    check("isolation: the ASE plugin in the baseline is detected",
+        eq(checkInit({ plugins: [ { name: "ase" } ], mcp_servers: [] }, bl), [ "foreign plugin loaded: ase" ]))
+    check("isolation: the ASE MCP server in the baseline is detected",
+        eq(checkInit({ plugins: [], mcp_servers: [ { name: "ase", status: "connected" } ] }, bl), [ "foreign MCP server loaded: ase" ]))
+    check("isolation: the baseline with built-in plugins only and no server is fine",
+        checkInit({ plugins: [ { name: "cc-plugin-telemetry", path: "builtin", source: "cc-plugin-telemetry@builtin" } ], mcp_servers: [] }, bl).length === 0)
+    check("isolation: an ASE run without plugin and without server is detected",
+        checkInit({ plugins: [], mcp_servers: [] }, ase).length === 2)
+    check("isolation: a foreign plugin is detected in the baseline as well",
+        eq(checkInit({ plugins: [ { name: "agdf", source: "agdf@market" } ], mcp_servers: [] }, bl), [ "foreign plugin loaded: agdf" ]))
+    const argsOf = (spec) => claudeArgs({ model: "sonnet", budget: 5, mcpConfigFile: "x.json" }, spec)
+    const a = argsOf(ase), b = argsOf(bl)
+    check("invocation: the baseline carries neither Skill nor the ASE MCP tools",
+        a.includes("Skill") && a.includes("mcp__ase__*") && !b.includes("Skill") && !b.includes("mcp__ase__*"))
+    check("invocation: the baseline loads no plugin directory", a.includes("--plugin-dir") && !b.includes("--plugin-dir"))
+    check("invocation: the baseline keeps the strict MCP configuration and the same tool bans",
+        b.includes("--strict-mcp-config") && b[b.indexOf("--mcp-config") + 1] === "x.json" && DISALLOWED_TOOLS.every((t) => b.includes(t)))
+    const promptLines = fs.readFileSync(BASELINE_PROMPT_FILE, "utf8").split(/\r\n|\r|\n/)
+    while (promptLines.at(-1) === "")
+        promptLines.pop()
+    check("invocation: the baseline prompt is the text of baseline-prompt.md, without carriage returns",
+        b[b.indexOf("-p") + 1] === promptLines.join("\n") && !b[b.indexOf("-p") + 1].includes("\r"))
+    const two = "line one\n\nline two\n\n"
+    check("prompt: line breaks at the end are dropped", normalizePrompt(two) === "line one\n\nline two")
+    check("prompt: CRLF line endings give the same prompt as LF", normalizePrompt(two.replace(/\n/g, "\r\n")) === "line one\n\nline two")
+    check("prompt: lone carriage returns give the same prompt as LF", normalizePrompt(two.replace(/\n/g, "\r")) === "line one\n\nline two")
+    check("condition record: ASE needs the tool and has no prompt file", ase.usesAse === true && ase.promptFile === null)
+    check("condition record: the baseline runs without ASE and names its prompt file", bl.usesAse === false && bl.promptFile === BASELINE_PROMPT_FILE)
+    check("condition record: no condition names a replay file of its own", !("replayFile" in ase) && !("replayFile" in bl))
+    check("condition record: an unknown or missing name counts as a run with ASE",
+        conditionUsesAse("ase") === true && conditionUsesAse("baseline") === false && conditionUsesAse("nope") === true && conditionUsesAse(undefined) === true)
+    const firstEvent = (file) => JSON.parse(fs.readFileSync(file, "utf8").split(/\r?\n/)[0])
+    const normalInit = firstEvent(path.join(shop.testdataDir, "normal.jsonl"))
+    check("dry run: the init event of normal.jsonl stays unchanged for the ASE condition", eq(conformInit(normalInit, ase), normalInit))
+    const fitted = conformInit(normalInit, bl)
+    check("dry run: the init event fitted to the baseline keeps the built-in plugin and drops ASE",
+        eq(fitted.plugins, [ { name: "cc-plugin-telemetry", path: "builtin", source: "cc-plugin-telemetry@builtin" } ]) && eq(fitted.mcp_servers, [])
+        && fitted.model === normalInit.model && checkInit(fitted, bl).length === 0)
+    const foreign = conformInit(firstEvent(path.join(TESTDATA_DIR, "isolation.jsonl")), ase)
+    check("dry run: fitting drops a foreign plugin and a foreign server",
+        eq(foreign.plugins.map((p) => p.name), [ "ase", "cc-plugin-telemetry" ]) && eq(foreign.mcp_servers, [ { name: "ase", status: "connected" } ]))
+    check("dry run: fitting an empty init event adds what the condition expects",
+        eq(conformInit({ type: "system", subtype: "init" }, ase), { type: "system", subtype: "init", plugins: [ { name: "ase" } ], mcp_servers: [ { name: "ase", status: "connected" } ] })
+        && eq(conformInit({ type: "system", subtype: "init" }, bl), { type: "system", subtype: "init", plugins: [], mcp_servers: [] }))
+    check("dry run: no case keeps a transcript of its own for the baseline",
+        [ "correctness-cents", "security-refunds", "context-returns" ].every((n) => !fs.existsSync(path.join(resolveCase(n).testdataDir, "baseline.jsonl"))))
+    check("MCP configuration: the baseline declares no server", eq(Object.keys(mcpConfig(bl).mcpServers), []))
+    const look = [ { type: "assistant", message: { content: [ { type: "tool_use", name: "Read",
+        input: { file_path: path.join(REPO_DIR, "plugin", "skills", "ase-repo-review", "SKILL.md") } } ] } } ]
+    check("contamination: the baseline may not look into the ASE repository",
+        checkContamination(look, bl).length > 0 && checkContamination(look, ase).length === 0)
+    const tmp   = fs.mkdtempSync(path.join(os.tmpdir(), "ase-rr-condition-"))
+    const write = (name, meta) => {
+        const d = path.join(tmp, name)
+        fs.mkdirSync(d)
+        fs.writeFileSync(path.join(d, "run.json"), stableStringify(meta))
+        return d
+    }
+    const model = { requested: "sonnet", reported: [ "claude-sonnet-5-5" ] }
+    const withAse  = write("20261113T000000Z-ase-sonnet-1",      { schema: 1, case: "correctness-cents", condition: "ase",      status: "ok", model })
+    const withBase = write("20261113T000001Z-baseline-sonnet-1", { schema: 1, case: "correctness-cents", condition: "baseline", status: "ok", model })
+    const older    = write("20261103T000000Z-sonnet-1",          { schema: 1, case: "correctness-cents",                       status: "ok", model })
+    check("grouping: the same model in two conditions gives two groups",
+        eq([ ...new Set([ withAse, withBase ].map((d) => loadRun(d).model)) ].sort(), [ "ase: sonnet", "baseline: sonnet" ]))
+    check("compatibility: a protocol without the condition field counts as the ASE condition",
+        loadRun(older).condition === "ase" && loadRun(older).model === "ase: sonnet")
+    check("log: the default title names date, case, conditions, and models",
+        defaultTitle([ withAse, withBase ], shop) === "2026-11-13: correctness-cents, ase+baseline, sonnet"
+        && defaultTitle([ older ], shop) === "2026-11-03: correctness-cents, ase, sonnet")
+    fs.rmSync(tmp, { recursive: true, force: true })
+}
+{
+    /*  thresholds and calibration are set for the ASE setup: the same three Opus runs, once as
+        they are and once relabelled as baseline runs, keep their figures in both groups, but
+        only the ASE group gets a verdict and a calibration  */
+    const tmp  = fs.mkdtempSync(path.join(os.tmpdir(), "ase-rr-limit-"))
+    const opus = collectRunDirs([ path.join(TESTDATA_DIR, "runs") ]).filter((d) => /-opus-/.test(d))
+    for (const d of opus) {
+        fs.cpSync(d, path.join(tmp, path.basename(d)), { recursive: true })
+        const twin = path.join(tmp, path.basename(d).replace("-opus-", "-baseline-opus-"))
+        fs.cpSync(d, twin, { recursive: true })
+        fs.writeFileSync(path.join(twin, "run.json"), stableStringify({ ...readJson(path.join(d, "run.json")), condition: "baseline" }))
+    }
+    const dirs   = collectRunDirs([ tmp ])
+    const report = buildReport(dirs, expected, shop)
+    const withA  = report.models["ase: opus"]
+    const withB  = report.models["baseline: opus"]
+    check("report: every group names its condition", withA?.condition === "ase" && withB?.condition === "baseline")
+    check("report: the ASE group keeps verdict and calibration",
+        withA.threshold.verdict === "threshold not met" && Object.keys(withA.threshold.criteria).length === 3 && withA.calibration?.statement === "adequate")
+    check("report: the baseline group gets neither a verdict nor a calibration",
+        eq(withB.threshold, { verdict: "threshold not applicable", criteria: {} }) && withB.calibration === undefined)
+    check("report: the baseline group keeps every figure", withB.recall.overall.mean === 0.9047 && eq(withB.recall, withA.recall)
+        && eq(withB.false_alarm_rate, withA.false_alarm_rate) && withB.runs.evaluated === 3)
+    const md    = renderMarkdown(report)
+    const partB = md.slice(md.indexOf("## Configuration baseline: opus"))
+    check("report: the Markdown explains the missing verdict and shows no calibration for the baseline",
+        partB.includes("Verdict: **threshold not applicable** (the pilot thresholds and the ceiling-effect check are set for the ASE condition)")
+        && !partB.includes("Calibration:") && md.includes("Verdict: **threshold not met**\n\nCalibration: **adequate**"))
+    const entry = renderSection({ title: "Series L", dirs, report, expected, c: shop })
+    check("log: the baseline row shows no threshold verdict and no ceiling-effect check",
+        /\| baseline: [^|]*\|(?: [^|]*\|){7} not applicable \| – \|/.test(entry.section) && /\| ase: [^|]*\|(?: [^|]*\|){7} not met \| adequate \|/.test(entry.section)
+        && entry.rows.some((r) => /\| baseline: .*\| not applicable \|/.test(r)))
+    fs.rmSync(tmp, { recursive: true, force: true })
+}
 {
     /*  a multibyte character split across two output chunks stays intact  */
     const tmp    = fs.mkdtempSync(path.join(os.tmpdir(), "ase-rr-selftest-"))
@@ -192,6 +312,13 @@ check("isolation: unconnected ASE MCP server is detected", checkInit({ plugins: 
     const use = (input) => ({ type: "assistant", message: { content: [ { type: "tool_use", name: "Read", input } ] } })
     check("contamination: access to the expected-results list is detected", checkContamination([ use({ file_path: "../../solution/expected.json" }) ]).length > 0)
     check("contamination: a relative path inside the copy is fine", checkContamination([ use({ file_path: "src/cart.ts" }) ]).length === 0)
+    /*  the skill harness (src/ase-test-review.ts) calls the check with the events only,
+        and has to get the result of the condition with ASE  */
+    const calls = [ "../../solution/expected.json", "src/cart.ts",
+        path.join(REPO_DIR, "plugin", "skills", "ase-repo-review", "SKILL.md"),
+        path.join(REPO_DIR, "README.md"), BASELINE_PROMPT_FILE ].map((p) => [ use({ file_path: p }) ])
+    check("contamination: a call without a condition checks like the condition with ASE",
+        calls.every((events) => eq(checkContamination(events), checkContamination(events, conditionSpec("ase")))))
 }
 {
     const base = { CLAUDECODE: "1", CLAUDE_CODE_SIMPLE: "1", ANTHROPIC_BASE_URL: "http://host", ANTHROPIC_API_KEY: "k", PATH: "/usr/bin", BENCH_TOKEN: "secret-123" }
@@ -200,6 +327,8 @@ check("isolation: unconnected ASE MCP server is detected", checkInit({ plugins: 
     check("child environment: endpoint and token set", env.ANTHROPIC_BASE_URL === "https://example.invalid" && env.ANTHROPIC_AUTH_TOKEN === "secret-123")
     check("child environment: protocol holds names only, no token", !JSON.stringify(envSummary(env)).includes("secret"))
     check("child environment: tool/bin first in PATH", env.PATH.split(path.delimiter)[0].endsWith(path.join("tool", "bin")))
+    const bare = childEnv({ base, platform: "linux", toolOnPath: false })
+    check("child environment: a run without ASE keeps the PATH as it is", bare.PATH === "/usr/bin" && bare.CLAUDECODE === undefined)
 }
 
 /*  deterministic serialization  */
@@ -240,6 +369,15 @@ check("serialization: key order is stable", stableStringify({ b: 1, a: { d: 2, c
     check("log: earlier content stays unchanged", second.startsWith(first.slice(0, first.indexOf("<!-- overview:end -->")))
         && second.includes(first.slice(first.indexOf("<!-- overview:end -->"))))
     check("log: new overview row lands inside the table", /\| Series B [^\n]*\n<!-- overview:end -->/.test(second))
+    const headOf = (text) => text.replace(/\r\n/g, "\n").slice(0, text.replace(/\r\n/g, "\n").indexOf("<!-- overview:start -->"))
+    const legend = headOf(first)
+    check("log: the legend explains the condition and the rows without one",
+        legend.includes("- **Configuration**: the measurement condition and the model") && legend.includes("belongs to `ase`"))
+    /*  a dated note in the head (such as the one about the move into the skill harness)
+        is a correction, not part of the legend  */
+    const withoutNotes = (head) => head.replace(/^Note \(\d{4}-\d{2}-\d{2}\):[^\n]*\n(?:[^\n]+\n)*\n/gm, "")
+    check("log: the head of MEASUREMENTS.md is the head of a new log, word for word, apart from dated notes",
+        withoutNotes(headOf(fs.readFileSync(path.join(DOCS_DIR, "MEASUREMENTS.md"), "utf8"))) === legend)
     fs.rmSync(tmp, { recursive: true, force: true })
 }
 
@@ -259,6 +397,104 @@ check("serialization: key order is stable", stableStringify({ b: 1, a: { d: 2, c
     check("measure: a reference copy of dry runs is refused (negative case)", refused)
     check("measure: a dry run has no preconditions", measurePreflight(measureOptions([ "--dry-run" ])).length === 0)
     check("measure: paid runs without --confirm-paid are refused (negative case)", measurePreflight(d).some((p) => /--confirm-paid/.test(p)))
+    let twice = ""
+    try {
+        measureOptions([ "--conditions", "ase,baseline,ase", "--dry-run" ])
+    }
+    catch (err) {
+        twice = err.message
+    }
+    check("measure: a condition named twice is refused by name (negative case)", twice === "--conditions names \"ase\" twice")
+
+    /*  the prompt file of a condition is checked before the first run of a series  */
+    const asked     = []
+    const probe     = (version) => (file) => {
+        asked.push(file)
+        return { file: path.basename(file), ...version }
+    }
+    const both      = measureOptions([ "--conditions", "ase,baseline", "--confirm-paid" ])
+    const aseOnly   = measureOptions([ "--conditions", "ase", "--confirm-paid" ])
+    const isPrompt  = (p) => /prompt file of the condition baseline \(baseline-prompt\.md\)/.test(p)
+    check("measure: an uncommitted prompt file stops a series with the baseline (negative case)",
+        measurePreflight(both, probe({ commit: null, modified: true })).filter(isPrompt).length === 1 && eq(asked, [ BASELINE_PROMPT_FILE ]))
+    check("measure: a modified prompt file stops it as well (negative case)",
+        measurePreflight(both, probe({ commit: "c0ffee", modified: true })).some(isPrompt))
+    check("measure: a committed prompt file passes", !measurePreflight(both, probe({ commit: "c0ffee", modified: false })).some(isPrompt))
+    asked.length = 0
+    check("measure: a series without the baseline asks for no prompt file",
+        !measurePreflight(aseOnly, probe({ commit: null, modified: true })).some(isPrompt) && asked.length === 0)
+
+    /*  the built tool is checked before the first run as well, whatever condition comes first  */
+    const fine      = probe({ commit: "c0ffee", modified: false })
+    const isTool    = (p) => /^tool\/ is not built/.test(p)
+    const blFirst   = measureOptions([ "--conditions", "baseline,ase", "--confirm-paid" ])
+    const blOnly    = measureOptions([ "--conditions", "baseline", "--confirm-paid" ])
+    check("measure: an unbuilt tool stops a series with an ASE condition before its first run (negative case)",
+        measurePreflight(blFirst, fine, () => false).filter(isTool).length === 1 && !measurePreflight(blFirst, fine, () => true).some(isTool))
+    check("measure: a series of the baseline alone needs no built tool", !measurePreflight(blOnly, fine, () => false).some(isTool))
+}
+
+/*  one-command measurement: a series the budget cut short  */
+{
+    const tmp   = fs.mkdtempSync(path.join(os.tmpdir(), "ase-rr-gaps-"))
+    const write = (name, condition, model) => {
+        const d = path.join(tmp, name)
+        fs.mkdirSync(d)
+        fs.writeFileSync(path.join(d, "run.json"), stableStringify({ schema: 1, case: "correctness-cents", ...(condition ? { condition } : {}), status: "ok", model: { requested: model } }))
+        return d
+    }
+    const plan  = { conditions: [ "ase", "baseline" ], models: [ "opus", "sonnet" ], runs: 2 }
+    const dirs  = [ write("a1", "ase", "opus"), write("a2", null, "opus"), write("a3", "ase", "sonnet"), write("a4", "ase", "sonnet"), write("b1", "baseline", "opus") ]
+    check("series: the gaps name condition, model, and the number of missing runs", eq(seriesGaps(plan, dirs), [
+        { condition: "baseline", model: "opus",   planned: 2, done: 1, missing: 1 },
+        { condition: "baseline", model: "sonnet", planned: 2, done: 0, missing: 2 }
+    ]))
+    check("series: a complete series has no gaps",
+        seriesGaps(plan, [ ...dirs, write("b2", "baseline", "opus"), write("b3", "baseline", "sonnet"), write("b4", "baseline", "sonnet") ]).length === 0)
+    fs.rmSync(tmp, { recursive: true, force: true })
+
+    /*  measure.mjs itself, with a run starter that writes one result folder per call and
+        reports the exhausted budget on its second call  */
+    const drive = (budgetAt) => {
+        const calls = [], errors = []
+        let   series = null
+        const start = (script, args) => {
+            calls.push(script)
+            if (script !== "run.mjs")
+                return 1
+            series = args[args.indexOf("--out") + 1]
+            if (calls.length === budgetAt)
+                return 3
+            const d = path.join(series, `run-${calls.length}`)
+            fs.mkdirSync(d)
+            fs.writeFileSync(path.join(d, "run.json"), stableStringify({ schema: 1, case: "correctness-cents", status: "ok", dry_run: true, cost_usd: 0,
+                condition: args[args.indexOf("--condition") + 1], model: { requested: args[args.indexOf("--model") + 1] } }))
+            return 0
+        }
+        const write = process.stdout.write
+        process.stdout.write = () => true
+        let code
+        try {
+            code = measureMain([ "--case", "correctness-cents", "--conditions", "ase,baseline", "--models", "sonnet", "--runs", "1", "--dry-run" ],
+                start, (text) => errors.push(text))
+        }
+        finally {
+            process.stdout.write = write
+        }
+        const left = series === null ? [] : fs.readdirSync(series).sort()
+        if (series !== null)
+            fs.rmSync(series, { recursive: true, force: true })
+        return { code, calls, text: errors.join(""), left, series }
+    }
+    const cut = drive(2)
+    check("series: a budget stop ends with exit code 3 and names the missing runs",
+        cut.code === 3 && cut.text.includes("  - baseline, sonnet: 1 of 1 run(s) missing\n") && cut.text.includes(`the 1 completed run(s) stay in ${cut.series}`))
+    check("series: a series the budget cut short is neither compared nor previewed, and its runs stay",
+        eq(cut.calls, [ "run.mjs", "run.mjs" ]) && eq(cut.left, [ "run-1" ]))
+    const whole = drive(0)
+    check("series: a complete series goes on to the comparison", eq(whole.calls, [ "run.mjs", "run.mjs", "compare.mjs" ]) && whole.code === 1
+        && !whole.text.includes("incomplete"))
+    check("series: the self-test leaves no series folder behind", !fs.existsSync(cut.series) && !fs.existsSync(whole.series))
 }
 
 /*  case resolution  */

@@ -23,6 +23,9 @@ npm install # executed inside the ase-eval dir
 
 3. Run the tests
 ```
+# use this as default. it lets you select the tests and models to run:
+./launch_tests.sh
+
 # run against the models claude code uses
 ./run_all_tests.sh
 ./run_agent_test.sh

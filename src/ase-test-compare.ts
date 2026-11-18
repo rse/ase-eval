@@ -29,7 +29,7 @@ type Entry = {
 }
 
 /*  the aggregate of all runs of one matrix cell resp. time-table row  */
-type Agg = { total: number, passed: number, costUsd: number, durationMs: number }
+type Agg = { total: number, passed: number, costUsd: number, durationMs: number, infra: number }
 
 /*  parse the command line  */
 const program = new Command()
@@ -112,10 +112,17 @@ if (entries.length === 0) {
 entries.sort((a, b) => a.time.localeCompare(b.time))
 
 /*  aggregate the runs per (case, model) and per (group, model), where skipped
-    runs carry no information and are excluded everywhere  */
+    runs carry no information and are excluded everywhere, and infrastructure
+    errors (e.g. a gateway outage) say nothing about the model, so they are
+    only counted separately, outside of the pass rates, costs, and durations  */
 const models = [ ...new Set(entries.map((entry) => entry.model)) ].sort()
 const aggAdd = (map: Map<string, Agg>, key: string, run: Run): void => {
-    const agg = map.get(key) ?? { total: 0, passed: 0, costUsd: 0, durationMs: 0 }
+    const agg = map.get(key) ?? { total: 0, passed: 0, costUsd: 0, durationMs: 0, infra: 0 }
+    if (run.outcome === "error") {
+        agg.infra += 1
+        map.set(key, agg)
+        return
+    }
     agg.total      += 1
     agg.passed     += run.outcome === "pass" ? 1 : 0
     agg.costUsd    += run.costUsd ?? 0
@@ -135,12 +142,15 @@ for (const entry of entries)
 const caseNames  = [ ...new Set([ ...byCase.keys()  ].map((key) => key.split("\u0000")[0])) ].sort()
 const groupNames = [ ...new Set([ ...byGroup.keys() ].map((key) => key.split("\u0000")[0])) ].sort()
 
-/*  format one matrix cell as "passed/total $mean-cost mean-duration"  */
+/*  format one matrix cell as "passed/total $mean-cost mean-duration [+N infra]"  */
 const cellText = (agg: Agg | undefined): string => {
-    if (agg === undefined || agg.total === 0)
+    if (agg === undefined || (agg.total === 0 && agg.infra === 0))
         return "·"
+    const infra = agg.infra > 0 ? ` +${agg.infra} infra` : ""
+    if (agg.total === 0)
+        return `0/0${infra}`
     return `${agg.passed}/${agg.total} $${(agg.costUsd / agg.total).toFixed(2)} ` +
-        prettyMs(agg.durationMs / agg.total, { compact: true })
+        prettyMs(agg.durationMs / agg.total, { compact: true }) + infra
 }
 
 /*  build one matrix as plain text rows (header row first)  */
@@ -154,7 +164,7 @@ const timeRows: string[][] = [
     [ "timestamp", "model", "version", "cases", "runs", "cost", "duration", "aborted" ],
     ...entries.map((entry) => {
         const runs = entry.summary.cases.flatMap((caze) => caze.runs ?? [])
-            .filter((run) => run.outcome !== "skipped")
+            .filter((run) => run.outcome !== "skipped" && run.outcome !== "error")
         const passedCases = entry.summary.cases.filter((caze) => caze.pass).length
         const passedRuns  = runs.filter((run) => run.outcome === "pass").length
         const duration    = runs.reduce((sum, run) => sum + (run.durationMs ?? 0), 0)
@@ -248,7 +258,7 @@ const svgChart = (title: string, unit: string, max: number,
 }
 const passRate = (entry: Entry): number | null => {
     const runs = entry.summary.cases.flatMap((caze) => caze.runs ?? [])
-        .filter((run) => run.outcome !== "skipped")
+        .filter((run) => run.outcome !== "skipped" && run.outcome !== "error")
     return runs.length === 0 ? null : 100 * runs.filter((run) => run.outcome === "pass").length / runs.length
 }
 const maxCost = Math.max(10, ...entries.map((entry) => entry.summary.totalUsd ?? 0))
@@ -268,7 +278,8 @@ const md =
     "ASE Test Run Comparison\n=======================\n\n" +
     `Generated ${generated} from ${entries.length} run summaries, ${models.length} models. ` +
     "Cells show passed/runs, mean cost per run, and mean duration per run " +
-    "(skipped runs excluded; costs of non-Anthropic gateway models are unreliable).\n\n" +
+    "(skipped runs excluded, infrastructure errors only counted as \"+N infra\"; " +
+    "costs of non-Anthropic gateway models are unreliable).\n\n" +
     "## Cases × Models\n\n"       + markdownTable(matrixRows(caseNames, byCase, "case"))     + "\n\n" +
     "## Case Groups × Models\n\n" + markdownTable(matrixRows(groupNames, byGroup, "group")) + "\n\n" +
     "## Runs over Time\n\n"            + markdownTable(timeRows)                                 + "\n"
@@ -331,7 +342,7 @@ span.swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-blo
 <body>
 <h1>ASE Test Run Comparison</h1>
 <p class="sub">Generated ${generated} from ${entries.length} run summaries, ${models.length} models.
-Cells show passed/runs, mean cost per run, and mean duration per run (skipped runs excluded;
+Cells show passed/runs, mean cost per run, and mean duration per run (skipped runs excluded, infrastructure errors only counted as "+N infra";
 costs of non-Anthropic gateway models are unreliable). Click a column header to sort.</p>
 <h2>Cases × Models</h2>
 ${htmlTable(matrixRows(caseNames, byCase, "case"))}

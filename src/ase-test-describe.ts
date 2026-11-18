@@ -157,7 +157,8 @@ export const describeCase = (caze: TestCase): string => {
     lines.push(chalk.bold(caze.name) + " " + chalk.dim(`(runs: ${caze.runs}, minPass: ${caze.minPass}, ` +
         `${caze.staged ? `staged/${caze.stages.length}` :
             (caze.turns !== null ? `interactive/${caze.turns.simulator}` : "single-shot")}, ` +
-        `timeout: ${caze.timeoutSec}s, budget: $${caze.maxUsd.toFixed(2)})`))
+        `timeout: ${caze.timeoutSec}s, budget: $${caze.maxUsd.toFixed(2)}` +
+        (!caze.staged && caze.stages[0].maxAgentTurns !== null ? `, agent turns: ${caze.stages[0].maxAgentTurns}` : "") + ")"))
 
     /*  the input: the first user turn (of a single-skill case), the sandbox
         fixture, and the simulator  */
@@ -196,7 +197,8 @@ export const describeCase = (caze: TestCase): string => {
         const prompt = skillPrompt(stage.skill, stage.args).split("\n")
         lines.push(`    stage ${index + 1}:   ${prompt[0]}` +
             (prompt.length > 1 ? chalk.dim(` (+${prompt.length - 1} more lines)`) : "") +
-            chalk.dim(` (timeout: ${stage.timeoutSec}s, budget: $${stage.maxUsd.toFixed(2)})`))
+            chalk.dim(` (timeout: ${stage.timeoutSec}s, budget: $${stage.maxUsd.toFixed(2)}` +
+                (stage.maxAgentTurns !== null ? `, agent turns: ${stage.maxAgentTurns}` : "") + ")"))
         if (stage.turns !== null)
             lines.push(`      ${describeTurns(caze, stage.turns)}`)
         if (stage.oracles.length > 0) {

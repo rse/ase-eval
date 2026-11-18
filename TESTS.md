@@ -113,6 +113,7 @@ holds the authoritative schema.
 | `runs`, `minPass` | number of runs and the pass@k threshold                                                        |
 | `failHint`        | guidance printed below every failed run of the case, e.g. what to report to a gateway operator |
 | `timeoutSec`, `budget.maxUsd` | wall-clock limit and cost budget of one run                                        |
+| `maxAgentTurns`   | cap of the agentic turns of one session, a runaway guard cheaper than dollars for uncached models |
 | `fixture`         | `git` (init and commit the project), `config` (written to `.ase/config.yaml`), `tasks` (task plan files seeded into `.ase/task/`), `lifecycle` (of the seeded store), `files` (a file tree copied into the project), `change` (see below) |
 | `turns`           | interactive session: `simulator` (`scripted` with `script`, or `llm` with `persona`), `model`, `maxTurns` |
 | `disallowedTools` | tools the session must not use, e.g. `[ Edit, Write ]`                                         |
@@ -167,6 +168,7 @@ review cases live in `cases/review/<name>/` (see `docs/review/README.md`).
 | `budget.maxUsd`                           | `2.00`             | per run, see "Budget and Retries"                             |
 | `fixture.lifecycle`                       | `solo`             | lifecycle of the seeded task store                            |
 | `turns.maxTurns`                          | `16`               | *user* turns; the agentic turn cap is 4×, resp. 32 single-shot |
+| `maxAgentTurns`                           | see `turns.maxTurns` | overrides the agentic turn cap (also per stage)             |
 | `turns.model`                             | `claude-haiku-5-5` | `llm` simulator only; precedence: `$ASE_TEST_FORCE_MODEL`, `turns.model`, `$ASE_TEST_SIM_MODEL`, default |
 | `in` (`regex`, `textMetric`, `similar`, `review`) | `lastMessage` |                                                        |
 | `disallowedTools`                         | `[]`               | a single-shot session also always disallows `AskUserQuestion` |
@@ -213,10 +215,20 @@ sessions use the automatic permission mode of the agent tool.
 -   `--budget-factor` scales all budgets, e.g. for gateway models
     without prompt caching; `launch_tests.sh` sets
     `ASE_TEST_BUDGET_FACTOR=3` for every non-Anthropic model.
--   The global `--max-cost-usd` ceiling stops scheduling further runs
-    (in-flight runs complete, the rest is `skipped`). A run whose cost is
-    inaccurate (timeout or crash before the final result message) is
-    booked at its full budget against the ceiling.
+-   The global `--max-cost-usd` ceiling, scaled by `--budget-factor`,
+    stops scheduling further runs (in-flight runs complete, the rest is
+    `skipped`). A run whose cost is inaccurate (timeout, stall, or crash
+    before the final result message) is booked at the mean accurate cost
+    so far (capped by, and before the first accurate run at, its budget),
+    and at its lower bound (usually `0`) if it never produced an
+    assistant message (e.g. a crash while loading the gateway settings).
+-   A session without any SDK message (incl. streamed partial messages)
+    for `$ASE_TEST_STALL_SEC` seconds (default `120`, `0` disables it) is
+    aborted as a *stall* -- e.g. a hanging gateway stream -- and is an
+    infrastructure error, retried once.
+-   After 3 consecutive infrastructure errors, the workers pause before
+    scheduling further runs (60 s, doubling up to 300 s), so a gateway
+    outage does not burn through the remaining runs.
 -   A run is retried exactly once, into `run-<n>-retry/`, when its
     session crashed before the skill produced any output or the attempt
     threw (e.g. the sandbox creation failed), and only while the ceiling

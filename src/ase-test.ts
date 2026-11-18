@@ -156,10 +156,37 @@ for (const caze of cases) {
         stage.maxUsd *= budgetFactor
 }
 
+/*  the global ceiling scales with the per-run budgets, so the scaled budgets
+    of a few slow or failed runs cannot alone exhaust an unscaled ceiling  */
+const ceilingUsd = maxCostUsd * budgetFactor
+
 /*  the money actually booked against the ceiling, and the reason why scheduling
     stopped ("" while it did not, so the string doubles as the stop flag)  */
 let totalUsd = 0
 let aborted  = ""
+
+/*  the booking of a session cost against the ceiling: an accurate cost as-is, a
+    session which never produced an assistant message (e.g. a crash while loading
+    the gateway settings) at its (zero) lower bound, and any other inaccurate cost
+    (timeout, stall, or crash mid-session) at the mean accurate cost so far, which
+    is capped by the budget and falls back to it as long as no mean exists  */
+let accurateUsd   = 0
+let accurateCount = 0
+const bookCost = (result: SessionResult, maxUsd: number): number => {
+    if (result.costAccurate) {
+        accurateUsd   += result.costUsd
+        accurateCount += 1
+        return result.costUsd
+    }
+    if (!result.messages.some((msg) => msg.type === "assistant"))
+        return result.costUsd
+    const estimate = accurateCount > 0 ? accurateUsd / accurateCount : maxUsd
+    return Math.min(maxUsd, Math.max(result.costUsd, estimate))
+}
+
+/*  the consecutive infrastructure errors (e.g. during a gateway outage), which
+    make the workers back off before scheduling further runs  */
+let infraStreak = 0
 
 /*  execute one attempt of one run of a case, containing every failure (a throw
     escaping here would reject the whole worker pool and lose all results)  */
@@ -197,9 +224,9 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
             const result    = await runSession({ ...stage, args }, sandbox, simulator, transcript.record(index + 1))
             results.push(result)
 
-            /*  an inaccurate cost (timeout or crash before the final result message)
-                is only a lower bound, so book the full budget of the stage globally  */
-            totalUsd += result.costAccurate ? result.costUsd : Math.max(result.costUsd, stage.maxUsd)
+            /*  an inaccurate cost (timeout, stall, or crash before the final result
+                message) is only a lower bound, so book a plausible estimate globally  */
+            totalUsd += bookCost(result, stage.maxUsd)
             if (!caze.staged)
                 continue
 
@@ -248,7 +275,8 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
             failure:      last.failure !== "" ? `${where}: ${last.failure}` : "",
             stopReason:   last.stopReason,
             apiStatus:    last.apiStatus,
-            mcpFailed:    results.some((r) => r.mcpFailed)
+            mcpFailed:    results.some((r) => r.mcpFailed),
+            stalled:      last.stalled
         }
         outcome.costUsd = result.costUsd
         outcome.model   = result.model
@@ -256,7 +284,7 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
         /*  an infrastructure failure is a crash without any skill output -- a
             timeout is never one, as retrying the most expensive failure mode
             would double the spend of a merely too slow case  */
-        const infra = (last.crashed && !last.timedOut && !skillSpoke(last.output)) || result.mcpFailed
+        const infra = (last.crashed && !last.timedOut && !skillSpoke(last.output)) || result.mcpFailed || last.stalled
         const api   = last.apiStatus !== null
         if (infra || api) {
             /*  an API refusal (e.g. HTTP 403 for an inaccessible model) is an
@@ -283,6 +311,22 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
             try {
                 const diff      = await changesetDiff(sandbox)
                 outcome.oracles = [ ...diagnostics, ...await oraclesRun(caze.oracles, caze, sandbox, result, diff) ]
+
+                /*  a skill re-invoking itself through the "Skill" tool (instead of
+                    following its already loaded workflow) is diagnostic only  */
+                if (!caze.staged && caze.skill !== "") {
+                    const names  = [ caze.skill, `ase:${caze.skill}` ]
+                    const reruns = result.messages
+                        .filter((msg) => msg.type === "assistant")
+                        .flatMap((msg) => ((msg.message?.content ?? []) as { type: string, name?: string, input?: { skill?: string } }[]))
+                        .filter((block) => block.type === "tool_use" && block.name === "Skill"
+                            && names.includes(block.input?.skill ?? "")).length
+                    if (reruns > 0)
+                        outcome.oracles.push({
+                            kind: "selfInvoke", pass: false, diagnostic: true,
+                            detail: `skill re-invoked itself ${reruns} time(s)`
+                        })
+                }
                 for (const [ index, r ] of results.entries())
                     if (r.costUsd > caze.stages[index].maxUsd)
                         outcome.oracles.push({
@@ -331,7 +375,7 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
     and only while the global ceiling still allows it  */
 const executeRun = async (caze: TestCase, run: number): Promise<RunOutcome> => {
     const first = await executeAttempt(caze, run, false)
-    if (!first.retry || aborted !== "" || totalUsd > maxCostUsd)
+    if (!first.retry || aborted !== "" || totalUsd > ceilingUsd)
         return first.outcome
     console.log(chalk.yellow(`⚠ ${caze.name} run ${run}: ${first.outcome.failure} -- retrying once`))
     const second = await executeAttempt(caze, run, true)
@@ -361,14 +405,20 @@ const worker = async (): Promise<void> => {
             }
             continue
         }
+        if (infraStreak >= 3) {
+            const pauseSec = Math.min(60 * 2 ** (infraStreak - 3), 300)
+            console.log(chalk.yellow(`⏸ ${infraStreak} consecutive infrastructure errors -- pausing ${pauseSec}s`))
+            await new Promise<void>((resolve) => setTimeout(resolve, pauseSec * 1000))
+        }
         item.outcome = await executeRun(item.caze, item.run)
         reportRun(item.caze.name, item.outcome, item.caze.failHint)
-        if (totalUsd > maxCostUsd && aborted === "")
-            aborted = `cost ceiling $${maxCostUsd.toFixed(2)} exceeded`
+        infraStreak = item.outcome.outcome === "error" ? infraStreak + 1 : 0
+        if (totalUsd > ceilingUsd && aborted === "")
+            aborted = `cost ceiling $${ceilingUsd.toFixed(2)} exceeded`
     }
 }
 console.log(`running ${work.length} run(s) of ${cases.length} case(s) ` +
-    chalk.dim(`(jobs: ${jobs}, budget: $${maxCostUsd.toFixed(2)}` +
+    chalk.dim(`(jobs: ${jobs}, budget: $${ceilingUsd.toFixed(2)}` +
         (process.env.ANTHROPIC_BASE_URL !== undefined ? `, endpoint: ${process.env.ANTHROPIC_BASE_URL}` : "") +
         `, results: ${resultsDir})`))
 await Promise.all(Array.from({ length: Math.min(jobs, work.length) }, () => worker()))

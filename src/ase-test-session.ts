@@ -25,8 +25,9 @@ export type SessionRecord = {
     never deliver the final result message carrying the cost of its last turn;
     "turns" counts the result messages, i.e. the completed agentic turns, not
     the user turns of the "turns.maxTurns" case setting; "stopReason" and
-    "apiStatus" are the subtype and HTTP status of an error result message, and
-    "mcpFailed" flags a session whose ASE MCP server never connected)  */
+    "apiStatus" are the subtype and HTTP status of an error result message,
+    "mcpFailed" flags a session whose ASE MCP server never connected, and
+    "stalled" one aborted by the watchdog after a too long silence)  */
 export type SessionResult = {
     messages:     Record<string, any>[]
     output:       string[]
@@ -40,6 +41,7 @@ export type SessionResult = {
     errored:      boolean
     crashed:      boolean
     timedOut:     boolean
+    stalled:      boolean
     failure:      string
     stopReason:   string
     apiStatus:    number | null
@@ -62,7 +64,7 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
     simulator: Simulator | null, record: SessionRecord): Promise<SessionResult> => {
     const result: SessionResult = {
         messages: [], output: [], lastText: "", dialog: [], sessionId: "", model: "",
-        costUsd: 0, costAccurate: true, turns: 0, errored: false, crashed: false, timedOut: false, failure: "",
+        costUsd: 0, costAccurate: true, turns: 0, errored: false, crashed: false, timedOut: false, stalled: false, failure: "",
         stopReason: "", apiStatus: null, mcpFailed: false
     }
     const prompt = stage.skill !== "" ? skillPrompt(stage.skill, stage.args) : stage.prompt
@@ -105,6 +107,28 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         abort.abort()
     }, stage.timeoutSec * 1000)
 
+    /*  the stall watchdog: abort a session without any SDK message (incl. the
+        streamed partial messages) for "stallSec", e.g. a hanging gateway stream,
+        where it is disarmed while the simulator composes an answer  */
+    const stallSec = Number(process.env.ASE_TEST_STALL_SEC ?? "120")
+    let stallTimer: ReturnType<typeof setTimeout> | null = null
+    const stallDisarm = () => {
+        if (stallTimer !== null)
+            clearTimeout(stallTimer)
+        stallTimer = null
+    }
+    const stallArm = () => {
+        stallDisarm()
+        if (!Number.isFinite(stallSec) || stallSec <= 0)
+            return
+        stallTimer = setTimeout(() => {
+            if (finished || result.timedOut)
+                return
+            result.stalled = true
+            abort.abort()
+        }, stallSec * 1000)
+    }
+
     /*  in plan mode, an "ExitPlanMode" call is auto-approved (the simulated user
         accepts every plan), and right after it the session is switched over to
         "acceptEdits" (outside the permission round-trip, on the next message),
@@ -122,7 +146,8 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         plugins:         [ { type: "local", path: path.join(repoRoot, "plugin") } ],
         settingSources:  [ "user" ],
         permissionMode:  stage.permissionMode,
-        maxTurns:        simulator !== null ? stage.turns!.maxTurns * 4 : 32,
+        maxTurns:        stage.maxAgentTurns ?? (simulator !== null ? stage.turns!.maxTurns * 4 : 32),
+        includePartialMessages: true,
         maxBudgetUsd:    stage.maxUsd,
         abortController: abort,
         stderr:          record.onStderr,
@@ -139,7 +164,9 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
                     planApproved = true
                 if (toolName === "AskUserQuestion" && simulator !== null) {
                     const questions = (toolInput as { questions?: Question[] }).questions ?? []
+                    stallDisarm()
                     const answers   = await simulator.answers(questions)
+                    stallArm()
                     for (const question of questions)
                         result.dialog.push(
                             { role: "assistant", text: question.question },
@@ -164,7 +191,13 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
     let userTurns = 1
     try {
         const session = query({ prompt: input(), options })
+        stallArm()
         for await (const msg of session) {
+            stallArm()
+
+            /*  the streamed partial messages only prove the session alive  */
+            if (msg.type === "stream_event")
+                continue
             if (planApproved && !planSwitched) {
                 planSwitched = true
                 await session.setPermissionMode("acceptEdits")
@@ -218,7 +251,9 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
                 else if (simulator === null || userTurns >= stage.turns!.maxTurns)
                     push(null)
                 else {
+                    stallDisarm()
                     const turn = await simulator.nextTurn(result.dialog)
+                    stallArm()
                     if (turn === null)
                         push(null)
                     else {
@@ -235,21 +270,29 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
             overrun or an API refusal) is only its consequence, not a crash, and
             its misleading stderr must never replace the reported real cause  */
         result.errored = true
-        if (result.stopReason === "" || result.timedOut) {
-            result.crashed      = !result.timedOut
+        if (result.stopReason === "" || result.timedOut || result.stalled) {
+            result.crashed      = !result.timedOut && !result.stalled
             result.costAccurate = false
             result.failure      = result.timedOut ? `timeout after ${stage.timeoutSec}s` :
-                `session crashed: ${err instanceof Error ? err.message : String(err)}`
+                result.stalled ? `stall: no message for ${stallSec}s` :
+                    `session crashed: ${err instanceof Error ? err.message : String(err)}`
         }
     }
     finally {
         clearTimeout(timer)
+        stallDisarm()
     }
     if (result.timedOut) {
         result.errored      = true
         result.costAccurate = false
         if (result.failure === "")
             result.failure = `timeout after ${stage.timeoutSec}s`
+    }
+    else if (result.stalled) {
+        result.errored      = true
+        result.costAccurate = false
+        if (result.failure === "")
+            result.failure = `stall: no message for ${stallSec}s`
     }
     return result
 }

@@ -8,13 +8,21 @@ per run.
 
 Checks that the model *obeys an instructed tool-call order*. The prompt
 demands exactly four MCP tool calls on the seeded task `alpha` --
-`ase_task_load`, `ase_task_save` (appending one marker line),
+`ase_task_load` (with `tag`), `ase_task_save` (appending one marker
+line, conditionally on the loaded entity tag as `base`),
 `ase_task_status` (to `SHELVED`), `ase_task_assign` (to `probe`) -- in
 exactly this order, with no other MCP calls, no retries, and no merges.
 The `toolSequence` oracle asserts the *observed* call sequence, so a
 model that reaches the same end state on a different path (reordering,
 skipping, repeating, or silently repairing a failed call) still fails.
 End-state oracles alone cannot see that difference.
+
+Since the conditional task saves of ASE, a plain `ase_task_save` on the
+existing task is refused (`save refused (pass its entity tag as base
+... or force ...)`), so the prompt spells out the one valid path
+(`tag` on load, `base` on save) -- otherwise a model obeying "no
+retries" would lose the save and a recovering one would break the
+order, a no-win situation (batch `2026-11-18-11-35-57`).
 
 ## Failures Uncovered
 

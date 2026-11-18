@@ -272,10 +272,28 @@ const main = async (): Promise<void> => {
     console.log("")
     await execa("node", [ "--import", "tsx", "src/ase-test-compare.ts" ],
         { cwd: harnessRoot, stdio: "inherit", reject: false })
+    /*  the verdict per runner from its summary: a runner whose executed cases
+        all passed is a PASS even when the cost ceiling skipped further runs (it
+        exits non-zero), and only an unreadable summary falls back to the exit code  */
     const worst = Math.max(...runners.map((runner) => runner.exitCode ?? 1))
-    for (const runner of runners)
-        console.log(`${runner.exitCode === 0 ? chalk.green("PASS") : chalk.red("FAIL")} ` +
-            `${runner.model} ` + chalk.dim(`(results/${timestamp}-${runner.slug})`))
+    for (const runner of runners) {
+        let verdict = runner.exitCode === 0 ? chalk.green("PASS") : chalk.red("FAIL")
+        try {
+            const file    = path.join(harnessRoot, "results", `${timestamp}-${runner.slug}`, "summary.json")
+            const summary = JSON.parse(fs.readFileSync(file, "utf8")) as
+                { cases?: { pass?: boolean, runs?: { outcome?: string }[] }[], aborted?: string }
+            const cases   = summary.cases ?? []
+            const failed  = cases.some((caze) => caze.pass !== true
+                && (caze.runs ?? []).some((run) => run.outcome !== "skipped"))
+            const aborted = (summary.aborted ?? "") !== ""
+            verdict = failed ? chalk.red("FAIL") :
+                aborted ? chalk.yellow(`PASS (aborted: ${summary.aborted})`) : chalk.green("PASS")
+        }
+        catch (_err) {
+            /*  keep the exit code based verdict  */
+        }
+        console.log(`${verdict} ${runner.model} ` + chalk.dim(`(results/${timestamp}-${runner.slug})`))
+    }
     process.exit(worst)
 }
 

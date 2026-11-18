@@ -8,6 +8,7 @@ args: >-
 runs: 2
 minPass: 1
 timeoutSec: 600
+maxAgentTurns: 16
 budget: { maxUsd: 2.50 }
 fixture:
   git: true

@@ -27,6 +27,10 @@ and which files changed.
     4 stdin vectors (`3 1 2`, `10 -5 10 0`, `7`, and empty).
 -   **Extra or stray files** (scratch files, tests, configuration):
     caught by `gitDiff` with `changed: [ sort.py ]`.
+-   **Runaway editing loops** (e.g. re-invoking the skill, repeated
+    commits and re-tests): capped by `maxAgentTurns: 16` (strong models
+    need 4-5 agentic turns, qwen took 34 in batch `2026-11-18-11-35-57`),
+    and flagged by the `selfInvoke` diagnostic.
 
 ## Artifacts
 

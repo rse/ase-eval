@@ -34,7 +34,11 @@ End-state oracles alone cannot see that difference.
     `toolSequence` (missing calls) and `gitDiff` (must stay empty).
 
 On failure the runner prints the case's `failHint`: the violation is an
-instruction-following weakness of the model, not a gateway problem.
+instruction-following weakness of the model, not a gateway problem. As
+the very first action of this plain prompt is an MCP call, it is the
+case most exposed to an unconnected ASE MCP server (`CONNECT_TIMEOUT`);
+the harness reports such a run as an infrastructure error and retries
+it, instead of blaming the model.
 
 ## Artifacts
 

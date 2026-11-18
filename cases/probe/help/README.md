@@ -19,6 +19,9 @@ identifier anyway.
     caught by `regex` on the headings `## NAME` and `## SYNOPSIS`.
 -   **Manual page truncated before the option list**: caught by `regex`
     on `--count`.
+-   **Include directive echoed instead of resolved** (e.g. the literal
+    `@.../ase-meta-mint/help.md`): caught by `regex` with `not` on
+    `@\S*help\.md`.
 -   **Workflow runs anyway and mints a UUID**: caught by `regex` with
     `not` on the UUID pattern.
 -   **Behavior not stable across runs**: caught by `runs: 3` with

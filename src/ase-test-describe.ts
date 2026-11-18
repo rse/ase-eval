@@ -85,7 +85,7 @@ const describeOracle = (caze: TestCase, oracle: OracleSpec): string[] => {
     else if ("toolSequence" in oracle) {
         const spec = oracle.toolSequence
         lines.push(`    - tool calls matching /${spec.only}/ ${spec.mode === "exact" ?
-            "are exactly" : "contain in order"}: ${spec.calls.join(" -> ")}`)
+            "are exactly" : spec.mode === "prefix" ? "start with" : "contain in order"}: ${spec.calls.join(" -> ")}`)
     }
     else if ("textMetric" in oracle) {
         const spec   = oracle.textMetric

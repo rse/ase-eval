@@ -91,6 +91,7 @@ const sandboxPopulate = async (caze: TestCase, root: string): Promise<Sandbox> =
     env.NO_UPDATE_NOTIFIER = "1"
     env.ASE_HEADLESS       = "true"
     env.GIT_TERMINAL_PROMPT = "0"
+    env.MCP_TIMEOUT        = process.env.MCP_TIMEOUT ?? "120000"
     credentials(home, env)
 
     /*  optionally route the sessions through an Anthropic-compatible gateway (e.g. a
@@ -100,9 +101,17 @@ const sandboxPopulate = async (caze: TestCase, root: string): Promise<Sandbox> =
             && /^(ANTHROPIC_BASE_URL|ANTHROPIC_AUTH_TOKEN|ANTHROPIC_(DEFAULT_[A-Z]+_)?MODEL|CLAUDE_CODE_(AUTO_COMPACT_WINDOW|MAX_OUTPUT_TOKENS|DISABLE_NONESSENTIAL_TRAFFIC))$/.test(key))
             env[key] = value
 
-    /*  keep the account-level claude.ai cloud connectors out of the session  */
+    /*  keep the account-level claude.ai cloud connectors out of the session, and
+        seal the answer keys (e.g. the expected probe values of "ase_compat" in the
+        tool sources, and the oracles of the harness) against the file reading tools
+        (the "//" prefix denotes an absolute path, and the "Read" rules also cover
+        "Grep" and "Glob"; "Bash" stays a known gap, as the skills need it)  */
+    const sealed = [ path.join(repoRoot, "tool", "src"), harnessRoot ]
     await fs.promises.writeFile(path.join(home, ".claude", "settings.json"),
-        JSON.stringify({ disableClaudeAiConnectors: true }), "utf8")
+        JSON.stringify({
+            disableClaudeAiConnectors: true,
+            permissions: { deny: sealed.map((dir) => `Read(/${dir}/**)`) }
+        }), "utf8")
 
     /*  materialize the fixture  */
     const sandbox: Sandbox = { root, home, project, env, baseRef: "" }
@@ -147,6 +156,14 @@ const sandboxPopulate = async (caze: TestCase, root: string): Promise<Sandbox> =
         const { stdout } = await git(sandbox, [ "rev-parse", "HEAD" ])
         sandbox.baseRef = stdout.trim()
     }
+
+    /*  pre-start the ASE service of the project, so the MCP server of the plugin
+        connects on the fast path instead of a cold service start, which under many
+        parallel sessions can exceed the MCP connect timeout of the agent tool  */
+    await execa("ase", [ "service", "start" ], {
+        cwd: project, env, extendEnv: false,
+        stdin: "ignore", timeout: 120 * 1000, reject: false
+    })
     return sandbox
 }
 

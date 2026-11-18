@@ -24,7 +24,9 @@ export type SessionRecord = {
     spend when "costAccurate" is false, as a timed-out or crashed session may
     never deliver the final result message carrying the cost of its last turn;
     "turns" counts the result messages, i.e. the completed agentic turns, not
-    the user turns of the "turns.maxTurns" case setting)  */
+    the user turns of the "turns.maxTurns" case setting; "stopReason" and
+    "apiStatus" are the subtype and HTTP status of an error result message, and
+    "mcpFailed" flags a session whose ASE MCP server never connected)  */
 export type SessionResult = {
     messages:     Record<string, any>[]
     output:       string[]
@@ -39,6 +41,9 @@ export type SessionResult = {
     crashed:      boolean
     timedOut:     boolean
     failure:      string
+    stopReason:   string
+    apiStatus:    number | null
+    mcpFailed:    boolean
 }
 
 /*  render the invocation of the skill <skill> with the arguments <args>, adding the
@@ -57,7 +62,8 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
     simulator: Simulator | null, record: SessionRecord): Promise<SessionResult> => {
     const result: SessionResult = {
         messages: [], output: [], lastText: "", dialog: [], sessionId: "", model: "",
-        costUsd: 0, costAccurate: true, turns: 0, errored: false, crashed: false, timedOut: false, failure: ""
+        costUsd: 0, costAccurate: true, turns: 0, errored: false, crashed: false, timedOut: false, failure: "",
+        stopReason: "", apiStatus: null, mcpFailed: false
     }
     const prompt = stage.skill !== "" ? skillPrompt(stage.skill, stage.args) : stage.prompt
 
@@ -169,6 +175,17 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
                 result.sessionId = msg.session_id
                 result.model     = msg.model
             }
+            else if (msg.type === "user") {
+                /*  an unconnected ASE MCP server is reported to the model only through
+                    the tool results (e.g. of "ToolSearch"), never as a session error  */
+                const blocks = Array.isArray(msg.message?.content) ? msg.message.content : []
+                for (const block of blocks as { type?: string, content?: unknown }[])
+                    if (block.type === "tool_result") {
+                        const text = typeof block.content === "string" ? block.content : JSON.stringify(block.content ?? "")
+                        if (/failed to connect/.test(text) && /plugin:ase:ase/.test(text))
+                            result.mcpFailed = true
+                    }
+            }
             else if (msg.type === "assistant") {
                 const blocks = Array.isArray(msg.message?.content) ? msg.message.content : []
                 for (const block of blocks)
@@ -186,8 +203,16 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
                     already accumulated spend  */
                 result.costUsd = Math.max(result.costUsd, msg.total_cost_usd ?? 0)
                 if (msg.is_error) {
-                    result.errored = true
-                    result.failure = `session error: ${msg.subtype}`
+                    /*  an API error carries the subtype "success", so prefer its terminal reason  */
+                    const extra  = msg as { api_error_status?: number | null, terminal_reason?: string, result?: unknown }
+                    const status = extra.api_error_status ?? null
+                    const reason = msg.subtype === "success" ? (extra.terminal_reason ?? msg.subtype) : msg.subtype
+                    const text   = String(extra.result ?? "").replace(/\s+/g, " ").slice(0, 300)
+                    result.errored    = true
+                    result.stopReason = reason
+                    result.apiStatus  = status
+                    result.failure    = `session error: ${reason}` +
+                        (status !== null ? ` (HTTP ${status}): ${text}` : "")
                     push(null)
                 }
                 else if (simulator === null || userTurns >= stage.turns!.maxTurns)
@@ -206,11 +231,16 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         finished = true
     }
     catch (err) {
-        result.errored      = true
-        result.crashed      = !result.timedOut
-        result.costAccurate = false
-        result.failure      = result.timedOut ? `timeout after ${stage.timeoutSec}s` :
-            `session crashed: ${err instanceof Error ? err.message : String(err)}`
+        /*  the non-zero exit right after an error result message (e.g. a budget
+            overrun or an API refusal) is only its consequence, not a crash, and
+            its misleading stderr must never replace the reported real cause  */
+        result.errored = true
+        if (result.stopReason === "" || result.timedOut) {
+            result.crashed      = !result.timedOut
+            result.costAccurate = false
+            result.failure      = result.timedOut ? `timeout after ${stage.timeoutSec}s` :
+                `session crashed: ${err instanceof Error ? err.message : String(err)}`
+        }
     }
     finally {
         clearTimeout(timer)

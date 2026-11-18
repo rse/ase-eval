@@ -70,11 +70,13 @@ const oracleSchema = z.union([
     }),
 
     /*  the order of the tool calls of the session: the names (matched by
-        their suffix after the last "__") of the calls matching "only"  */
+        their suffix after the last "__") of the calls matching "only", which
+        must equal "calls" ("exact"), start with them ("prefix"), or contain
+        them in order ("subsequence")  */
     z.strictObject({
         toolSequence: z.strictObject({
             calls:        z.array(z.string()).min(1),
-            mode:         z.enum([ "exact", "subsequence" ]).default("subsequence"),
+            mode:         z.enum([ "exact", "prefix", "subsequence" ]).default("subsequence"),
             only:         z.string().default("^mcp__")
         })
     }),

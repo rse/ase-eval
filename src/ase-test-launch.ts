@@ -225,6 +225,10 @@ const main = async (): Promise<void> => {
         ]
         for (const name of forced)
             env[name] = model
+
+        /*  gateway models get no prompt caching, so their budgets are scaled up  */
+        if (env.ASE_TEST_BUDGET_FACTOR === undefined && !/anthropic\.claude/.test(model))
+            env.ASE_TEST_BUDGET_FACTOR = "3"
         const argv  = [ "--import", "tsx", "src/ase-test.ts", ...globs,
             `--results=${resultsDir}`, ...process.argv.slice(2) ]
         const child = execa("node", argv, { cwd: harnessRoot, env, reject: false, all: true, buffer: false })

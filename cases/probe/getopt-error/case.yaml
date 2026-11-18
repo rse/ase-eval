@@ -8,6 +8,10 @@ minPass: 2
 timeoutSec: 180
 budget: { maxUsd: 1.00 }
 oracles:
+  - toolSequence:
+      mode: prefix
+      calls:
+        - ase_getopt
   - regex:
       in: output
       match:

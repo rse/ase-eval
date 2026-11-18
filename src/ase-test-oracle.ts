@@ -256,8 +256,9 @@ export const oraclesRun = async (oracles: OracleSpec[], caze: TestCase, sandbox:
                 .filter((name) => only.test(name))
                 .map((name) => name.split("__").at(-1) ?? name)
             let fault = ""
-            if (spec.mode === "exact") {
-                for (let i = 0; i < Math.max(called.length, spec.calls.length); i++)
+            if (spec.mode === "exact" || spec.mode === "prefix") {
+                const n = spec.mode === "exact" ? Math.max(called.length, spec.calls.length) : spec.calls.length
+                for (let i = 0; i < n; i++)
                     if (called[i] !== spec.calls[i]) {
                         fault = called[i]     === undefined ? `call ${i + 1} missing, expected "${spec.calls[i]}"` :
                             spec.calls[i] === undefined ? `unexpected call ${i + 1} "${called[i]}"` :

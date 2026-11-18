@@ -43,6 +43,9 @@ program
     .option("-k, --keep", "keep the sandboxes of all runs", false)
     .option("-K, --keep-failed", "keep the sandboxes of failed runs", false)
     .option("-m, --max-cost-usd <n>", "global cost ceiling in USD", "20")
+    .option("-b, --budget-factor <n>", "factor applied to the per-run budgets of all cases " +
+        "(default: $ASE_TEST_BUDGET_FACTOR, else 1)")
+    .option("--allow-stale", "run even if the tool build is older than its sources", false)
     .option("-r, --results <dir>", "results directory (default: results/<timestamp>)")
     .option("--llm <file>", "env-file profile for an Anthropic-compatible " +
         "gateway (default: $ASE_TEST_LLM)")
@@ -94,6 +97,19 @@ for (const file of [ "dst/ase.js", "dst/ase-task-board-web-client.html" ])
         console.error(chalk.red(`tool is not fully built ("tool/${file}" missing) -- run: cd ../tool && npm start build`))
         process.exit(2)
     }
+
+/*  preflight: the tool build must not be older than its sources, as the plugin is
+    loaded from the working copy while its MCP server runs the built "dst/" code  */
+const newestMtime = (dir: string): number =>
+    fs.readdirSync(dir, { withFileTypes: true }).reduce((max, entry) => Math.max(max,
+        entry.isDirectory() ? newestMtime(path.join(dir, entry.name)) :
+            fs.statSync(path.join(dir, entry.name)).mtimeMs), 0)
+const toolBuilt = fs.statSync(path.join(repoRoot, "tool", "dst", "ase.js")).mtime
+if (newestMtime(path.join(repoRoot, "tool", "src")) > toolBuilt.getTime() && !(opts.allowStale as boolean)) {
+    console.error(chalk.red("tool build is stale (tool/src newer than tool/dst) -- " +
+        "run: cd ../tool && npm start build (or pass --allow-stale)"))
+    process.exit(2)
+}
 if (process.env.ANTHROPIC_API_KEY === undefined
     && process.env.CLAUDE_CODE_OAUTH_TOKEN === undefined
     && !fs.existsSync(path.join(process.env.HOME ?? "", ".claude", ".credentials.json"))) {
@@ -124,6 +140,20 @@ if (!Number.isFinite(maxCostUsd) || maxCostUsd <= 0) {
 if (!Number.isInteger(jobs) || jobs < 1) {
     console.error(chalk.red(`invalid --jobs resp. $ASE_TEST_JOBS value: "${jobsValue}"`))
     process.exit(2)
+}
+
+/*  scale the per-run budgets, e.g. for gateway models without prompt caching,
+    whose every turn re-sends the full context at the full input price  */
+const budgetValue  = opts.budgetFactor ?? process.env.ASE_TEST_BUDGET_FACTOR ?? "1"
+const budgetFactor = Number(budgetValue)
+if (!Number.isFinite(budgetFactor) || budgetFactor <= 0) {
+    console.error(chalk.red(`invalid --budget-factor resp. $ASE_TEST_BUDGET_FACTOR value: "${budgetValue}"`))
+    process.exit(2)
+}
+for (const caze of cases) {
+    caze.maxUsd *= budgetFactor
+    for (const stage of caze.stages)
+        stage.maxUsd *= budgetFactor
 }
 
 /*  the money actually booked against the ceiling, and the reason why scheduling
@@ -215,7 +245,10 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
             errored:      last.errored,
             crashed:      last.crashed,
             timedOut:     last.timedOut,
-            failure:      last.failure !== "" ? `${where}: ${last.failure}` : ""
+            failure:      last.failure !== "" ? `${where}: ${last.failure}` : "",
+            stopReason:   last.stopReason,
+            apiStatus:    last.apiStatus,
+            mcpFailed:    results.some((r) => r.mcpFailed)
         }
         outcome.costUsd = result.costUsd
         outcome.model   = result.model
@@ -223,12 +256,17 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
         /*  an infrastructure failure is a crash without any skill output -- a
             timeout is never one, as retrying the most expensive failure mode
             would double the spend of a merely too slow case  */
-        const infra = last.crashed && !last.timedOut && !skillSpoke(last.output)
-        if (infra) {
+        const infra = (last.crashed && !last.timedOut && !skillSpoke(last.output)) || result.mcpFailed
+        const api   = last.apiStatus !== null
+        if (infra || api) {
+            /*  an API refusal (e.g. HTTP 403 for an inaccessible model) is an
+                infrastructure error, too, but only a rate limit or a server
+                error is transient enough to be worth a paid retry  */
             outcome.outcome = "error"
-            outcome.failure = result.failure
+            outcome.failure = result.mcpFailed && result.failure === "" ?
+                "MCP server plugin:ase:ase failed to connect" : result.failure
             outcome.oracles = diagnostics
-            retry = !retried
+            retry = !retried && (!api || last.apiStatus === 429 || last.apiStatus! >= 500)
             await transcriptFinish(transcript, caze, sandbox, result, "", diagnostics, false, stages)
         }
         else if (caze.staged && last.errored) {
@@ -358,6 +396,8 @@ const meta = {
     simModel:     process.env.ASE_TEST_SIM_MODEL ?? "claude-haiku-5-5",
     pluginCommit,
     pluginVersion,
+    toolBuilt:    toolBuilt.toISOString(),
+    budgetFactor: String(budgetFactor),
     sdkVersion,
     nodeVersion:  process.version
 }

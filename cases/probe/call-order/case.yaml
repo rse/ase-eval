@@ -9,7 +9,9 @@ budget: { maxUsd: 1.00 }
 failHint: >-
   the model violated the instructed tool-call order: the toolSequence
   detail names the first out-of-order, missing, or extra MCP call -- an
-  instruction-following weakness of the model, not a gateway problem
+  instruction-following weakness of the model, not a gateway problem;
+  a run whose ASE MCP server failed to connect is reported as an
+  infrastructure error instead
 fixture:
   git: true
   lifecycle: solo

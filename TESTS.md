@@ -20,6 +20,8 @@ via `npm start test -- <options>` and the `run_*.sh` scripts.
 | `-k, --keep`             | keep the sandboxes of all runs                                       |
 | `-K, --keep-failed`      | keep the sandboxes of failed runs                                    |
 | `-m, --max-cost-usd <n>` | global cost ceiling in USD (default: `20`)                           |
+| `-b, --budget-factor <n>` | factor on all per-run budgets (default: `$ASE_TEST_BUDGET_FACTOR`, else `1`) |
+| `--allow-stale`          | run even if `tool/dst` is older than `tool/src`                      |
 | `-r, --results <dir>`    | results directory (default: `results/<timestamp>`)                   |
 | `-C, --cases-dir <dir>`  | cases directory (default: `cases`; e.g. `uplift` for the uplift benchmark) |
 | `--llm <file>`           | gateway profile (default: `$ASE_TEST_LLM`)                           |
@@ -56,7 +58,7 @@ see `docs/review/README.md`), `clean`, and `distclean`.
 |------|-------------------------------------------------------------------------------------------|
 | `0`  | all cases passed                                                                          |
 | `1`  | a case failed its pass@k threshold, or no case matched the globs                          |
-| `2`  | cost ceiling hit (wins over `1`), an infrastructure error or skipped run, or a preflight error (missing profile, unbuilt tool, no credentials, no `python3` for a `suite` oracle, invalid `--jobs`/`--max-cost-usd`) |
+| `2`  | cost ceiling hit (wins over `1`), an infrastructure error or skipped run, or a preflight error (missing profile, unbuilt or stale tool, no credentials, no `python3` for a `suite` oracle, invalid `--jobs`/`--max-cost-usd`/`--budget-factor`) |
 
 ## Third-Party Gateways
 
@@ -133,7 +135,7 @@ fixed dates; the change commit is the baseline of the `gitDiff` oracle.
 | `fileExists` | path or list of paths                                      | all files exist in the project                                              |
 | `gitDiff`    | `empty`, `changed`, `unchanged`, `mustMatch`, `mustNotMatch` | the changeset diff against the fixture commit satisfies all fields        |
 | `taskStore`  | `id`, `exists`, `status`, `titleMatch`, `bodyMatch`, `count` | the task store (`.ase/task/`) satisfies all fields                        |
-| `toolSequence` | `calls`, `mode`, `only`                                  | the tool calls matching `only` (default `^mcp__`), matched by their name suffix after the last `__`, equal `calls` (`mode: exact`) resp. contain them in order (`subsequence`, the default) |
+| `toolSequence` | `calls`, `mode`, `only`                                  | the tool calls matching `only` (default `^mcp__`), matched by their name suffix after the last `__`, equal `calls` (`mode: exact`), start with them (`prefix`), resp. contain them in order (`subsequence`, the default) |
 | `textMetric` | `in`, `file`, `min`/`maxChars`, `min`/`maxWords`           | the target's length is within the bounds                                    |
 | `exec`       | `command`, `reference`, `stdin`, `timeoutSec`              | `command` (in the project) prints the same stdout as `reference` (in the case directory) for every `stdin` vector, trailing whitespace ignored |
 | `suite`      | `dir`, `timeoutSec`                                        | the hidden Python suite `dir`, copied into the project only after the last session and the diff, runs via `python3 -m unittest discover` with every test passed |
@@ -206,7 +208,11 @@ sessions use the automatic permission mode of the agent tool.
 ### Budget and Retries
 
 -   The agent tool aborts a session at `budget.maxUsd` itself, and a run
-    exceeding it fails even when all its oracles pass.
+    exceeding it fails even when all its oracles pass. Such an abort is
+    reported as `session error: error_max_budget_usd` and never retried.
+-   `--budget-factor` scales all budgets, e.g. for gateway models
+    without prompt caching; `launch_tests.sh` sets
+    `ASE_TEST_BUDGET_FACTOR=3` for every non-Anthropic model.
 -   The global `--max-cost-usd` ceiling stops scheduling further runs
     (in-flight runs complete, the rest is `skipped`). A run whose cost is
     inaccurate (timeout or crash before the final result message) is
@@ -215,14 +221,21 @@ sessions use the automatic permission mode of the agent tool.
     session crashed before the skill produced any output or the attempt
     threw (e.g. the sandbox creation failed), and only while the ceiling
     is not hit. A timeout is never retried. The reported cost sums both
-    attempts.
+    attempts. A session whose ASE MCP server failed to connect is an
+    infrastructure error and retried, too. An API refusal (e.g. HTTP 403
+    for an inaccessible model) is an infrastructure error, retried only
+    for HTTP 429 and 5xx.
 
 ## Sandboxing
 
 Every run gets a private sandbox, so runs are parallel-safe:
 
 -   a private HOME with XDG directories, credentials, and a Claude
-    `settings.json` with `disableClaudeAiConnectors`
+    `settings.json` with `disableClaudeAiConnectors` and `Read` deny
+    rules sealing `tool/src/` and the harness (the answer keys) against
+    `Read`/`Grep`/`Glob` -- `Bash` remains a known gap
+-   a pre-started ASE service and `MCP_TIMEOUT=120000` (unless set), so
+    the MCP server connects even under many parallel cold starts
 -   a private project directory with the fixture, its own `.ase/` state,
     task store, and service port
 -   an environment without agent tool, ASE, tmux, and Copilot state and

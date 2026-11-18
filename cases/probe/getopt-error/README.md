@@ -15,6 +15,9 @@ and stop before it mints anything. A weaker model tends to skip
 
 ## Failures Uncovered
 
+-   **Option parsing skipped (options guessed, unknown option silently
+    dropped)**: caught by `toolSequence` with `mode: prefix`, which
+    demands `ase_getopt` as the first MCP call.
 -   **Error not reported or not in the template's wording**: caught by
     `regex` on `ERROR: option parsing failed`.
 -   **Skill continues after the parsing error and mints a UUID anyway**:

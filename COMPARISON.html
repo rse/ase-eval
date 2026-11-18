@@ -51,78 +51,100 @@ span.swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-blo
 </style>
 <body>
 <h1>ASE Test Run Comparison</h1>
-<p class="sub">Generated 2026-11-18T10:29:38Z from 20 run summaries, 10 models.
+<p class="sub">Generated 2026-11-18T10:48:15Z from 50 run summaries, 13 models.
 Cells show passed/runs, mean cost per run, and mean duration per run (skipped runs excluded;
 costs of non-Anthropic gateway models are unreliable). Click a column header to sort.</p>
 <h2>Cases × Models</h2>
 <table>
-<thead><tr><th>case</th><th>claude-haiku-4-5-20251001</th><th>claude-opus-5-5</th><th>claude-sonnet-5</th><th>deepseek.v3.2</th><th>global.openai.gpt-6-astra</th><th>global.openai.gpt-6-sol</th><th>haiku</th><th>moonshotai.kimi-k3.1</th><th>qwen.qwen3-235b-a22b-2507-v1:0</th><th>sonnet</th></tr></thead>
+<thead><tr><th>case</th><th>deepseek.v3.2</th><th>eu.anthropic.claude-opus-5-5</th><th>eu.anthropic.claude-sonnet-5</th><th>global.anthropic.claude-haiku-4-5-20251001-v1:0</th><th>global.moonshotai.kimi-k3.1</th><th>global.openai.gpt-6-astra</th><th>global.openai.gpt-6-luna</th><th>global.openai.gpt-6-sol</th><th>global.zai.glm-5.3</th><th>mistral.devstral-2-123b</th><th>moonshotai.kimi-k3.1</th><th>openai.gpt-oss-120b-1:0</th><th>qwen.qwen3-235b-a22b-2507-v1:0</th></tr></thead>
 <tbody>
-<tr><th scope="row">code/edit-sort-script</th><td>·</td><td>2/2 $0.82 1m</td><td>·</td><td>0/2 $1.99 3m</td><td>·</td><td>2/2 $0.33 44s</td><td>·</td><td>0/2 $0.00 22s</td><td>·</td><td>·</td></tr>
-<tr><th scope="row">flow/brainstorm-grill-implement</th><td>·</td><td>3/3 $2.42 5m</td><td>·</td><td>0/3 $2.89 7m</td><td>·</td><td>3/3 $3.06 4m</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
-<tr><th scope="row">flow/csvq-grill</th><td>·</td><td>2/2 $2.37 7m</td><td>·</td><td>0/2 $2.09 3m</td><td>·</td><td>0/2 $2.85 5m</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
-<tr><th scope="row">meta/brainstorm-headless</th><td>·</td><td>3/3 $0.45 59s</td><td>·</td><td>2/3 $1.08 4m</td><td>·</td><td>3/3 $0.36 43s</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
-<tr><th scope="row">meta/mint-uuid</th><td>1/1 $0.15 57s</td><td>4/4 $0.39 16s</td><td>1/1 $0.31 40s</td><td>1/1 $0.60 2m</td><td>·</td><td>0/1 $0.28 12s</td><td>0/1 $0.00 9s</td><td>·</td><td>·</td><td>0/1 $0.00 12s</td></tr>
-<tr><th scope="row">one-shot</th><td>·</td><td>0/2 $0.30 46s</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
-<tr><th scope="row">plan-mode</th><td>·</td><td>2/2 $0.83 2m</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
-<tr><th scope="row">probe/call-order</th><td>·</td><td>3/3 $0.32 22s</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
-<tr><th scope="row">probe/compat</th><td>·</td><td>4/4 $0.32 18s</td><td>·</td><td>1/2 $0.70 2m</td><td>1/2 $0.23 26s</td><td>·</td><td>·</td><td>·</td><td>2/2 $0.36 20s</td><td>·</td></tr>
-<tr><th scope="row">probe/getopt-error</th><td>·</td><td>6/6 $0.38 13s</td><td>·</td><td>3/3 $0.48 1m</td><td>3/3 $0.27 11s</td><td>·</td><td>·</td><td>·</td><td>1/3 $1.11 34s</td><td>·</td></tr>
-<tr><th scope="row">probe/help</th><td>·</td><td>6/6 $0.39 18s</td><td>·</td><td>3/3 $0.30 1m</td><td>3/3 $0.17 17s</td><td>·</td><td>·</td><td>·</td><td>0/3 $0.11 9s</td><td>·</td></tr>
-<tr><th scope="row">probe/task-status</th><td>·</td><td>6/6 $0.34 11s</td><td>·</td><td>3/3 $0.59 1m</td><td>3/3 $0.27 13s</td><td>·</td><td>·</td><td>·</td><td>3/3 $0.55 30s</td><td>·</td></tr>
-<tr><th scope="row">probe/tool-leak</th><td>·</td><td>·</td><td>·</td><td>0/3 $0.49 1m</td><td>·</td><td>·</td><td>·</td><td>·</td><td>2/3 $0.60 33s</td><td>·</td></tr>
-<tr><th scope="row">review/context-returns</th><td>·</td><td>3/3 $0.87 1m</td><td>·</td><td>0/3 $2.64 4m</td><td>·</td><td>3/3 $0.82 2m</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
-<tr><th scope="row">review/correctness-cents</th><td>·</td><td>3/3 $0.64 1m</td><td>·</td><td>0/3 $3.71 6m</td><td>·</td><td>3/3 $0.67 1m</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
-<tr><th scope="row">review/security-refunds</th><td>·</td><td>3/3 $0.66 1m</td><td>·</td><td>0/3 $4.16 14m</td><td>·</td><td>3/3 $0.68 1m</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
-<tr><th scope="row">task/edit-headless</th><td>·</td><td>2/2 $0.85 50s</td><td>·</td><td>0/1 $0.00 10m</td><td>·</td><td>2/2 $0.78 39s</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
-<tr><th scope="row">task/grill-llm</th><td>·</td><td>1/1 $1.23 1m</td><td>·</td><td>·</td><td>·</td><td>1/1 $0.85 1m</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
-<tr><th scope="row">task/grill-scripted</th><td>·</td><td>1/1 $0.92 59s</td><td>·</td><td>·</td><td>·</td><td>1/1 $0.73 1m</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
-<tr><th scope="row">task/grill-semantic</th><td>·</td><td>1/1 $1.12 2m</td><td>·</td><td>·</td><td>·</td><td>1/1 $0.86 2m</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
-<tr><th scope="row">task/list-seeded</th><td>·</td><td>1/1 $0.36 11s</td><td>·</td><td>·</td><td>·</td><td>1/1 $0.28 8s</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
-<tr><th scope="row">value/ase-grill</th><td>·</td><td>2/2 $2.71 8m</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
-<tr><th scope="row">value/one-shot</th><td>·</td><td>0/2 $0.31 46s</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
-<tr><th scope="row">value/plan-mode</th><td>·</td><td>2/2 $0.73 2m</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
+<tr><th scope="row">code/edit-sort-script</th><td>0/4 $2.34 3m</td><td>6/6 $0.53 1m</td><td>2/2 $0.43 1m</td><td>·</td><td>6/6 $0.28 1m</td><td>4/4 $0.29 50s</td><td>·</td><td>4/4 $0.33 40s</td><td>0/2 $0.00 5s</td><td>·</td><td>0/2 $0.00 22s</td><td>0/2 $0.52 1m</td><td>1/6 $4.35 1m</td></tr>
+<tr><th scope="row">flow/brainstorm-grill-implement</th><td>0/6 $2.88 6m</td><td>3/6 $2.50 4m</td><td>3/3 $3.63 19m</td><td>·</td><td>3/3 $3.07 8m</td><td>1/3 $3.12 4m</td><td>·</td><td>5/6 $3.07 4m</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
+<tr><th scope="row">flow/csvq-grill</th><td>0/2 $2.09 3m</td><td>2/2 $3.36 8m</td><td>·</td><td>·</td><td>0/2 $2.33 6m</td><td>1/2 $3.49 9m</td><td>·</td><td>0/2 $2.85 5m</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
+<tr><th scope="row">meta/brainstorm-headless</th><td>5/6 $0.88 4m</td><td>3/6 $0.31 53s</td><td>3/3 $0.24 1m</td><td>·</td><td>2/3 $0.31 1m</td><td>3/3 $0.38 1m</td><td>·</td><td>6/6 $0.35 38s</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
+<tr><th scope="row">meta/mint-uuid</th><td>3/3 $0.66 2m</td><td>3/3 $0.26 18s</td><td>2/2 $0.20 51s</td><td>0/2 $0.08 38s</td><td>2/2 $0.25 27s</td><td>2/2 $0.29 17s</td><td>1/2 $0.24 22s</td><td>3/4 $0.29 12s</td><td>0/1 $0.00 4s</td><td>0/1 $2.25 41s</td><td>·</td><td>1/1 $0.94 1m</td><td>1/1 $0.60 17s</td></tr>
+<tr><th scope="row">probe/call-order</th><td>·</td><td>1/3 $0.15 40s</td><td>·</td><td>·</td><td>2/3 $0.10 49s</td><td>1/3 $0.10 37s</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td><td>1/3 $0.27 44s</td><td>1/3 $0.21 34s</td></tr>
+<tr><th scope="row">probe/compat</th><td>5/6 $0.63 1m</td><td>6/6 $0.22 25s</td><td>2/2 $0.19 46s</td><td>2/2 $0.10 48s</td><td>4/4 $0.19 51s</td><td>5/10 $0.23 29s</td><td>·</td><td>2/2 $0.23 22s</td><td>·</td><td>0/2 $2.09 1m</td><td>0/2 $0.00 16s</td><td>1/2 $1.94 1m</td><td>2/4 $0.27 17s</td></tr>
+<tr><th scope="row">probe/getopt-error</th><td>9/9 $0.50 1m</td><td>9/9 $0.24 15s</td><td>3/3 $0.18 43s</td><td>3/3 $0.08 33s</td><td>6/6 $0.20 37s</td><td>15/15 $0.27 12s</td><td>·</td><td>3/3 $0.28 12s</td><td>·</td><td>0/3 $0.71 31s</td><td>0/3 $0.00 20s</td><td>3/3 $0.51 1m</td><td>1/6 $0.81 27s</td></tr>
+<tr><th scope="row">probe/help</th><td>8/9 $0.31 1m</td><td>9/9 $0.23 20s</td><td>1/3 $0.13 30s</td><td>2/3 $0.04 13s</td><td>6/6 $0.12 24s</td><td>15/15 $0.17 21s</td><td>·</td><td>3/3 $0.16 12s</td><td>·</td><td>0/3 $1.06 51s</td><td>0/3 $0.00 24s</td><td>0/3 $0.16 14s</td><td>0/6 $0.14 16s</td></tr>
+<tr><th scope="row">probe/task-status</th><td>8/9 $0.76 1m</td><td>9/9 $0.21 14s</td><td>3/3 $0.16 34s</td><td>0/3 $0.09 46s</td><td>4/6 $0.21 24s</td><td>15/15 $0.27 13s</td><td>·</td><td>3/3 $0.28 10s</td><td>·</td><td>2/3 $0.86 24s</td><td>0/3 $0.00 16s</td><td>3/3 $0.63 40s</td><td>6/6 $0.49 25s</td></tr>
+<tr><th scope="row">probe/tool-leak</th><td>0/3 $0.49 1m</td><td>3/3 $0.24 29s</td><td>·</td><td>·</td><td>6/6 $0.22 28s</td><td>9/9 $0.26 19s</td><td>·</td><td>·</td><td>·</td><td>·</td><td>0/1 $0.00 20s</td><td>3/3 $0.78 1m</td><td>5/6 $0.58 27s</td></tr>
+<tr><th scope="row">review/context-returns</th><td>0/6 $3.49 6m</td><td>6/6 $0.68 1m</td><td>0/3 $0.63 3m</td><td>·</td><td>2/3 $0.57 1m</td><td>3/3 $0.80 2m</td><td>·</td><td>6/6 $0.82 2m</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
+<tr><th scope="row">review/correctness-cents</th><td>0/4 $3.56 6m</td><td>6/6 $0.50 1m</td><td>0/3 $0.49 3m</td><td>·</td><td>0/3 $0.42 1m</td><td>3/3 $0.67 2m</td><td>·</td><td>6/6 $0.70 1m</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
+<tr><th scope="row">review/security-refunds</th><td>0/3 $4.16 14m</td><td>4/4 $0.53 1m</td><td>3/3 $0.46 2m</td><td>·</td><td>1/3 $0.63 1m</td><td>·</td><td>·</td><td>6/6 $0.68 1m</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
+<tr><th scope="row">task/edit-headless</th><td>0/1 $0.00 10m</td><td>4/4 $0.66 57s</td><td>2/2 $0.67 2m</td><td>·</td><td>4/4 $0.72 1m</td><td>2/2 $0.80 1m</td><td>·</td><td>4/4 $0.77 34s</td><td>·</td><td>·</td><td>·</td><td>1/2 $2.76 1m</td><td>0/2 $5.27 1m</td></tr>
+<tr><th scope="row">task/grill-llm</th><td>·</td><td>1/1 $1.18 2m</td><td>1/1 $1.19 8m</td><td>·</td><td>·</td><td>·</td><td>·</td><td>2/2 $0.85 1m</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
+<tr><th scope="row">task/grill-scripted</th><td>·</td><td>1/1 $1.19 1m</td><td>1/1 $0.96 5m</td><td>·</td><td>·</td><td>·</td><td>·</td><td>2/2 $0.73 1m</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
+<tr><th scope="row">task/grill-semantic</th><td>·</td><td>1/1 $1.21 2m</td><td>1/1 $1.05 7m</td><td>·</td><td>·</td><td>·</td><td>·</td><td>2/2 $0.88 2m</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
+<tr><th scope="row">task/list-seeded</th><td>·</td><td>1/1 $0.23 16s</td><td>1/1 $0.16 42s</td><td>·</td><td>·</td><td>·</td><td>·</td><td>2/2 $0.28 8s</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
 </tbody>
 </table>
 <h2>Case Groups × Models</h2>
 <table>
-<thead><tr><th>group</th><th>claude-haiku-4-5-20251001</th><th>claude-opus-5-5</th><th>claude-sonnet-5</th><th>deepseek.v3.2</th><th>global.openai.gpt-6-astra</th><th>global.openai.gpt-6-sol</th><th>haiku</th><th>moonshotai.kimi-k3.1</th><th>qwen.qwen3-235b-a22b-2507-v1:0</th><th>sonnet</th></tr></thead>
+<thead><tr><th>group</th><th>deepseek.v3.2</th><th>eu.anthropic.claude-opus-5-5</th><th>eu.anthropic.claude-sonnet-5</th><th>global.anthropic.claude-haiku-4-5-20251001-v1:0</th><th>global.moonshotai.kimi-k3.1</th><th>global.openai.gpt-6-astra</th><th>global.openai.gpt-6-luna</th><th>global.openai.gpt-6-sol</th><th>global.zai.glm-5.3</th><th>mistral.devstral-2-123b</th><th>moonshotai.kimi-k3.1</th><th>openai.gpt-oss-120b-1:0</th><th>qwen.qwen3-235b-a22b-2507-v1:0</th></tr></thead>
 <tbody>
-<tr><th scope="row">code</th><td>·</td><td>2/2 $0.82 1m</td><td>·</td><td>0/2 $1.99 3m</td><td>·</td><td>2/2 $0.33 44s</td><td>·</td><td>0/2 $0.00 22s</td><td>·</td><td>·</td></tr>
-<tr><th scope="row">flow</th><td>·</td><td>5/5 $2.40 6m</td><td>·</td><td>0/5 $2.57 5m</td><td>·</td><td>3/5 $2.98 5m</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
-<tr><th scope="row">meta</th><td>1/1 $0.15 57s</td><td>7/7 $0.42 35s</td><td>1/1 $0.31 40s</td><td>3/4 $0.96 3m</td><td>·</td><td>3/4 $0.34 35s</td><td>0/1 $0.00 9s</td><td>·</td><td>·</td><td>0/1 $0.00 12s</td></tr>
-<tr><th scope="row">one-shot</th><td>·</td><td>0/2 $0.30 46s</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
-<tr><th scope="row">plan-mode</th><td>·</td><td>2/2 $0.83 2m</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
-<tr><th scope="row">probe</th><td>·</td><td>25/25 $0.35 16s</td><td>·</td><td>10/14 $0.50 1m</td><td>10/11 $0.24 16s</td><td>·</td><td>·</td><td>·</td><td>8/14 $0.56 25s</td><td>·</td></tr>
-<tr><th scope="row">review</th><td>·</td><td>9/9 $0.73 1m</td><td>·</td><td>0/9 $3.51 8m</td><td>·</td><td>9/9 $0.72 1m</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
-<tr><th scope="row">task</th><td>·</td><td>6/6 $0.89 1m</td><td>·</td><td>0/1 $0.00 10m</td><td>·</td><td>6/6 $0.71 1m</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
-<tr><th scope="row">value</th><td>·</td><td>4/6 $1.25 3m</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
+<tr><th scope="row">code</th><td>0/4 $2.34 3m</td><td>6/6 $0.53 1m</td><td>2/2 $0.43 1m</td><td>·</td><td>6/6 $0.28 1m</td><td>4/4 $0.29 50s</td><td>·</td><td>4/4 $0.33 40s</td><td>0/2 $0.00 5s</td><td>·</td><td>0/2 $0.00 22s</td><td>0/2 $0.52 1m</td><td>1/6 $4.35 1m</td></tr>
+<tr><th scope="row">flow</th><td>0/8 $2.68 6m</td><td>5/8 $2.71 5m</td><td>3/3 $3.63 19m</td><td>·</td><td>3/5 $2.77 7m</td><td>2/5 $3.27 6m</td><td>·</td><td>5/8 $3.01 4m</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
+<tr><th scope="row">meta</th><td>8/9 $0.80 3m</td><td>6/9 $0.29 41s</td><td>5/5 $0.22 1m</td><td>0/2 $0.08 38s</td><td>4/5 $0.28 1m</td><td>5/5 $0.34 53s</td><td>1/2 $0.24 22s</td><td>9/10 $0.32 28s</td><td>0/1 $0.00 4s</td><td>0/1 $2.25 41s</td><td>·</td><td>1/1 $0.94 1m</td><td>1/1 $0.60 17s</td></tr>
+<tr><th scope="row">probe</th><td>30/36 $0.54 1m</td><td>37/39 $0.22 21s</td><td>9/11 $0.16 38s</td><td>7/11 $0.08 34s</td><td>28/31 $0.18 33s</td><td>60/67 $0.23 19s</td><td>·</td><td>11/11 $0.24 13s</td><td>·</td><td>2/11 $1.10 51s</td><td>0/12 $0.00 19s</td><td>11/17 $0.65 55s</td><td>15/31 $0.45 24s</td></tr>
+<tr><th scope="row">review</th><td>0/13 $3.67 8m</td><td>16/16 $0.57 1m</td><td>3/9 $0.53 3m</td><td>·</td><td>3/9 $0.54 1m</td><td>6/6 $0.73 2m</td><td>·</td><td>18/18 $0.73 1m</td><td>·</td><td>·</td><td>·</td><td>·</td><td>·</td></tr>
+<tr><th scope="row">task</th><td>0/1 $0.00 10m</td><td>8/8 $0.81 1m</td><td>6/6 $0.79 4m</td><td>·</td><td>4/4 $0.72 1m</td><td>2/2 $0.80 1m</td><td>·</td><td>12/12 $0.71 1m</td><td>·</td><td>·</td><td>·</td><td>1/2 $2.76 1m</td><td>0/2 $5.27 1m</td></tr>
 </tbody>
 </table>
 <h2>Runs over Time</h2>
 <table>
 <thead><tr><th>timestamp</th><th>model</th><th>version</th><th>cases</th><th>runs</th><th>cost</th><th>duration</th><th>aborted</th></tr></thead>
 <tbody>
-<tr><th scope="row">2026-11-16T07-37-07</th><td>claude-opus-5-5</td><td>19b6f27a</td><td>9/9</td><td>15/15</td><td>$15.95</td><td>29m</td><td></td></tr>
-<tr><th scope="row">2026-11-16T08-17-33</th><td>claude-opus-5-5</td><td>19b6f27a</td><td>3/3</td><td>9/9</td><td>$6.54</td><td>12m</td><td></td></tr>
-<tr><th scope="row">2026-11-16T12-01-24</th><td>claude-opus-5-5</td><td>19b6f27a</td><td>5/5</td><td>12/12</td><td>$4.70</td><td>3m</td><td></td></tr>
-<tr><th scope="row">2026-11-16T12-04-09</th><td>claude-opus-5-5</td><td>19b6f27a</td><td>4/4</td><td>11/11</td><td>$3.57</td><td>2m</td><td></td></tr>
+<tr><th scope="row">2026-11-16T09-19-53</th><td>eu.anthropic.claude-opus-5-5</td><td>3236c653</td><td>4/12</td><td>10/16</td><td>$21.59</td><td>22m</td><td>yes</td></tr>
+<tr><th scope="row">2026-11-16T09-25-48</th><td>eu.anthropic.claude-sonnet-5</td><td>3236c653</td><td>10/12</td><td>18/24</td><td>$22.10</td><td>2h</td><td>yes</td></tr>
+<tr><th scope="row">2026-11-16T09-37-13</th><td>global.openai.gpt-6-sol</td><td>3236c653</td><td>12/12</td><td>23/24</td><td>$22.18</td><td>35m</td><td>yes</td></tr>
+<tr><th scope="row">2026-11-16T12-11-15</th><td>global.anthropic.claude-haiku-4-5-20251001-v1:0</td><td>3236c653</td><td>3/4</td><td>7/11</td><td>$0.85</td><td>6m</td><td></td></tr>
+<tr><th scope="row">2026-11-16T12-31-21</th><td>deepseek.v3.2</td><td>3236c653</td><td>4/4</td><td>11/11</td><td>$6.26</td><td>12m</td><td></td></tr>
+<tr><th scope="row">2026-11-16T12-35-54</th><td>deepseek.v3.2</td><td>3236c653</td><td>2/12</td><td>4/13</td><td>$32.80</td><td>1h</td><td>yes</td></tr>
+<tr><th scope="row">2026-11-16T18-21-32</th><td>deepseek.v3.2</td><td>3236c653</td><td>4/4</td><td>9/11</td><td>$6.11</td><td>16m</td><td></td></tr>
+<tr><th scope="row">2026-11-16T18-25-41</th><td>mistral.devstral-2-123b</td><td>3236c653</td><td>1/4</td><td>2/11</td><td>$12.05</td><td>9m</td><td></td></tr>
 <tr><th scope="row">2026-11-16T18-26-38</th><td>deepseek.v3.2</td><td>3236c653</td><td>2/13</td><td>3/21</td><td>$54.71</td><td>2h</td><td>yes</td></tr>
+<tr><th scope="row">2026-11-16T18-44-42</th><td>eu.anthropic.claude-sonnet-5</td><td>3236c653</td><td>3/4</td><td>9/11</td><td>$1.79</td><td>6m</td><td></td></tr>
+<tr><th scope="row">2026-11-16T18-47-24</th><td>eu.anthropic.claude-opus-5-5</td><td>3236c653</td><td>4/4</td><td>11/11</td><td>$2.60</td><td>3m</td><td></td></tr>
+<tr><th scope="row">2026-11-16T19-00-13</th><td>global.openai.gpt-6-astra</td><td>3236c653</td><td>3/4</td><td>10/11</td><td>$2.58</td><td>2m</td><td></td></tr>
+<tr><th scope="row">2026-11-16T19-00-28</th><td>eu.anthropic.claude-opus-5-5</td><td>3236c653</td><td>4/4</td><td>11/11</td><td>$2.59</td><td>3m</td><td></td></tr>
+<tr><th scope="row">2026-11-16T19-01-24</th><td>eu.anthropic.claude-opus-5-5</td><td>3236c653</td><td>13/13</td><td>26/26</td><td>$29.14</td><td>1h</td><td></td></tr>
 <tr><th scope="row">2026-11-16T19-01-38</th><td>global.openai.gpt-6-astra</td><td>3236c653</td><td>3/4</td><td>10/11</td><td>$2.59</td><td>2m</td><td></td></tr>
+<tr><th scope="row">2026-11-16T19-08-49</th><td>global.openai.gpt-6-sol</td><td>3236c653</td><td>4/4</td><td>11/11</td><td>$2.62</td><td>2m</td><td></td></tr>
 <tr><th scope="row">2026-11-16T19-09-35</th><td>global.openai.gpt-6-sol</td><td>3236c653</td><td>11/13</td><td>23/26</td><td>$27.68</td><td>51m</td><td></td></tr>
-<tr><th scope="row">2026-11-16T19-31-54</th><td>claude-opus-5-5</td><td>19b6f27a</td><td>2/3</td><td>4/6</td><td>$7.48</td><td>22m</td><td></td></tr>
-<tr><th scope="row">2026-11-16T19-54-04</th><td>claude-opus-5-5</td><td>19b6f27a</td><td>1/2</td><td>2/4</td><td>$2.26</td><td>7m</td><td></td></tr>
-<tr><th scope="row">2026-11-16T19-57-32</th><td>claude-opus-5-5</td><td>19b6f27a</td><td>1/1</td><td>2/2</td><td>$4.75</td><td>14m</td><td></td></tr>
+<tr><th scope="row">2026-11-16T19-42-00</th><td>global.openai.gpt-6-sol</td><td>3236c653</td><td>1/1</td><td>1/1</td><td>$0.29</td><td>15s</td><td></td></tr>
+<tr><th scope="row">2026-11-16T19-42-09</th><td>eu.anthropic.claude-opus-5-5</td><td>3236c653</td><td>1/1</td><td>1/1</td><td>$0.30</td><td>20s</td><td></td></tr>
+<tr><th scope="row">2026-11-16T19-42-23</th><td>global.openai.gpt-6-sol</td><td>3236c653</td><td>1/1</td><td>1/1</td><td>$0.29</td><td>12s</td><td></td></tr>
+<tr><th scope="row">2026-11-16T19-42-44</th><td>global.openai.gpt-6-luna</td><td>3236c653</td><td>1/1</td><td>1/1</td><td>$0.34</td><td>35s</td><td></td></tr>
+<tr><th scope="row">2026-11-16T19-43-42</th><td>global.anthropic.claude-haiku-4-5-20251001-v1:0</td><td>3236c653</td><td>0/1</td><td>0/1</td><td>$0.09</td><td>41s</td><td></td></tr>
+<tr><th scope="row">2026-11-16T19-44-32</th><td>global.anthropic.claude-haiku-4-5-20251001-v1:0</td><td>3236c653</td><td>0/1</td><td>0/1</td><td>$0.07</td><td>34s</td><td></td></tr>
 <tr><th scope="row">2026-11-16T20-35-38</th><td>deepseek.v3.2</td><td>3236c653</td><td>3/5</td><td>10/14</td><td>$7.98</td><td>21m</td><td></td></tr>
 <tr><th scope="row">2026-11-17T02-26-35</th><td>qwen.qwen3-235b-a22b-2507-v1:0</td><td>3236c653</td><td>3/5</td><td>8/14</td><td>$7.85</td><td>6m</td><td></td></tr>
+<tr><th scope="row">2026-11-17T02-27-02</th><td>moonshotai.kimi-k3.1</td><td>3236c653</td><td>0/5</td><td>0/12</td><td>$24.00</td><td>3m</td><td>yes</td></tr>
+<tr><th scope="row">2026-11-17T02-39-55</th><td>qwen.qwen3-235b-a22b-2507-v1:0</td><td>3236c653</td><td>0/1</td><td>0/2</td><td>$10.33</td><td>2m</td><td></td></tr>
+<tr><th scope="row">2026-11-17T02-46-19</th><td>qwen.qwen3-235b-a22b-2507-v1:0</td><td>3236c653</td><td>0/1</td><td>0/2</td><td>$10.38</td><td>2m</td><td></td></tr>
+<tr><th scope="row">2026-11-17T02-47-59</th><td>global.zai.glm-5.3</td><td>3236c653</td><td>0/1</td><td>0/2</td><td>$10.00</td><td>11s</td><td></td></tr>
 <tr><th scope="row">2026-11-17T02-50-40</th><td>moonshotai.kimi-k3.1</td><td>3236c653</td><td>0/1</td><td>0/2</td><td>$10.00</td><td>44s</td><td></td></tr>
-<tr><th scope="row">2026-11-17T09-16-23</th><td>claude-opus-5-5</td><td>19b6f27a</td><td>1/1</td><td>1/1</td><td>$0.47</td><td>16s</td><td></td></tr>
-<tr><th scope="row">2026-11-17T09-16-49</th><td>claude-opus-5-5</td><td>19b6f27a</td><td>1/1</td><td>1/1</td><td>$0.36</td><td>15s</td><td></td></tr>
-<tr><th scope="row">2026-11-18T10-07-56</th><td>claude-opus-5-5</td><td>2.1.1</td><td>1/1</td><td>3/3</td><td>$0.96</td><td>1m</td><td></td></tr>
-<tr><th scope="row">2026-11-18T10-25-39</th><td>haiku</td><td>2.1.1</td><td>0/1</td><td>0/1</td><td>$2.00</td><td>9s</td><td></td></tr>
-<tr><th scope="row">2026-11-18T10-25-39</th><td>sonnet</td><td>2.1.1</td><td>0/1</td><td>0/1</td><td>$2.00</td><td>12s</td><td></td></tr>
-<tr><th scope="row">2026-11-18T10-28-40</th><td>claude-haiku-4-5-20251001</td><td>2.1.1</td><td>1/1</td><td>1/1</td><td>$0.15</td><td>57s</td><td></td></tr>
-<tr><th scope="row">2026-11-18T10-28-40</th><td>claude-sonnet-5</td><td>2.1.1</td><td>1/1</td><td>1/1</td><td>$0.31</td><td>40s</td><td></td></tr>
+<tr><th scope="row">2026-11-17T02-54-39</th><td>global.moonshotai.kimi-k3.1</td><td>3236c653</td><td>1/1</td><td>2/2</td><td>$0.56</td><td>1m</td><td></td></tr>
+<tr><th scope="row">2026-11-17T02-55-10</th><td>global.moonshotai.kimi-k3.1</td><td>3236c653</td><td>5/5</td><td>13/14</td><td>$2.70</td><td>5m</td><td></td></tr>
+<tr><th scope="row">2026-11-17T02-56-39</th><td>global.moonshotai.kimi-k3.1</td><td>3236c653</td><td>6/13</td><td>13/22</td><td>$25.79</td><td>1h</td><td>yes</td></tr>
+<tr><th scope="row">2026-11-18T09-33-12</th><td>global.openai.gpt-6-astra</td><td>178286ae</td><td>4/5</td><td>13/14</td><td>$3.44</td><td>3m</td><td></td></tr>
+<tr><th scope="row">2026-11-18T09-40-03</th><td>global.openai.gpt-6-astra</td><td>178286ae</td><td>5/5</td><td>14/14</td><td>$3.46</td><td>3m</td><td></td></tr>
+<tr><th scope="row">2026-11-18T09-41-03</th><td>global.openai.gpt-6-astra</td><td>178286ae</td><td>6/13</td><td>14/17</td><td>$22.74</td><td>52m</td><td>yes</td></tr>
+<tr><th scope="row">2026-11-18T10-30-54</th><td>deepseek.v3.2</td><td>2.1.1</td><td>1/1</td><td>1/1</td><td>$0.68</td><td>2m</td><td></td></tr>
+<tr><th scope="row">2026-11-18T10-30-54</th><td>eu.anthropic.claude-sonnet-5</td><td>2.1.1</td><td>1/1</td><td>1/1</td><td>$0.21</td><td>45s</td><td></td></tr>
+<tr><th scope="row">2026-11-18T10-30-54</th><td>global.moonshotai.kimi-k3.1</td><td>2.1.1</td><td>1/1</td><td>1/1</td><td>$0.28</td><td>28s</td><td></td></tr>
+<tr><th scope="row">2026-11-18T10-30-54</th><td>global.openai.gpt-6-astra</td><td>2.1.1</td><td>1/1</td><td>1/1</td><td>$0.29</td><td>18s</td><td></td></tr>
+<tr><th scope="row">2026-11-18T10-30-54</th><td>global.openai.gpt-6-luna</td><td>2.1.1</td><td>0/1</td><td>0/1</td><td>$0.13</td><td>10s</td><td></td></tr>
+<tr><th scope="row">2026-11-18T10-30-54</th><td>global.zai.glm-5.3</td><td>2.1.1</td><td>0/1</td><td>0/1</td><td>$2.00</td><td>4s</td><td></td></tr>
+<tr><th scope="row">2026-11-18T10-30-54</th><td>mistral.devstral-2-123b</td><td>2.1.1</td><td>0/1</td><td>0/1</td><td>$2.25</td><td>41s</td><td></td></tr>
+<tr><th scope="row">2026-11-18T10-30-54</th><td>openai.gpt-oss-120b-1:0</td><td>2.1.1</td><td>1/1</td><td>1/1</td><td>$0.94</td><td>1m</td><td></td></tr>
+<tr><th scope="row">2026-11-18T10-30-54</th><td>qwen.qwen3-235b-a22b-2507-v1:0</td><td>2.1.1</td><td>1/1</td><td>1/1</td><td>$0.60</td><td>17s</td><td></td></tr>
+<tr><th scope="row">2026-11-18T10-37-56</th><td>eu.anthropic.claude-opus-5-5</td><td>2.1.1</td><td>7/8</td><td>19/21</td><td>$5.84</td><td>12m</td><td></td></tr>
+<tr><th scope="row">2026-11-18T10-37-56</th><td>global.moonshotai.kimi-k3.1</td><td>2.1.1</td><td>8/8</td><td>19/21</td><td>$5.16</td><td>18m</td><td></td></tr>
+<tr><th scope="row">2026-11-18T10-37-56</th><td>global.openai.gpt-6-astra</td><td>2.1.1</td><td>6/8</td><td>17/21</td><td>$5.71</td><td>13m</td><td></td></tr>
+<tr><th scope="row">2026-11-18T10-37-56</th><td>openai.gpt-oss-120b-1:0</td><td>2.1.1</td><td>4/8</td><td>12/21</td><td>$17.52</td><td>22m</td><td></td></tr>
+<tr><th scope="row">2026-11-18T10-37-56</th><td>qwen.qwen3-235b-a22b-2507-v1:0</td><td>2.1.1</td><td>3/8</td><td>8/21</td><td>$21.92</td><td>10m</td><td>yes</td></tr>
 </tbody>
 </table>
 <h2>Pass Rate over Time</h2>
@@ -138,60 +160,134 @@ costs of non-Anthropic gateway models are unreliable). Click a column header to 
 <text class="tick" x="48" y="78" text-anchor="end">75%</text>
 <line class="grid" x1="56" y1="16" x2="824" y2="16"/>
 <text class="tick" x="48" y="20" text-anchor="end">100%</text>
-<text class="tick" transform="rotate(-40 56 264)" x="56" y="264" text-anchor="end">2026-11-16T07-37-07</text>
-<text class="tick" transform="rotate(-40 96.42105263157895 264)" x="96.42105263157895" y="264" text-anchor="end">2026-11-16T08-17-33</text>
-<text class="tick" transform="rotate(-40 136.8421052631579 264)" x="136.8421052631579" y="264" text-anchor="end">2026-11-16T12-01-24</text>
-<text class="tick" transform="rotate(-40 177.26315789473682 264)" x="177.26315789473682" y="264" text-anchor="end">2026-11-16T12-04-09</text>
-<text class="tick" transform="rotate(-40 217.68421052631578 264)" x="217.68421052631578" y="264" text-anchor="end">2026-11-16T18-26-38</text>
-<text class="tick" transform="rotate(-40 258.10526315789474 264)" x="258.10526315789474" y="264" text-anchor="end">2026-11-16T19-01-38</text>
-<text class="tick" transform="rotate(-40 298.52631578947364 264)" x="298.52631578947364" y="264" text-anchor="end">2026-11-16T19-09-35</text>
-<text class="tick" transform="rotate(-40 338.9473684210526 264)" x="338.9473684210526" y="264" text-anchor="end">2026-11-16T19-31-54</text>
-<text class="tick" transform="rotate(-40 379.36842105263156 264)" x="379.36842105263156" y="264" text-anchor="end">2026-11-16T19-54-04</text>
-<text class="tick" transform="rotate(-40 419.7894736842105 264)" x="419.7894736842105" y="264" text-anchor="end">2026-11-16T19-57-32</text>
-<text class="tick" transform="rotate(-40 460.2105263157895 264)" x="460.2105263157895" y="264" text-anchor="end">2026-11-16T20-35-38</text>
-<text class="tick" transform="rotate(-40 500.63157894736844 264)" x="500.63157894736844" y="264" text-anchor="end">2026-11-17T02-26-35</text>
-<text class="tick" transform="rotate(-40 541.0526315789473 264)" x="541.0526315789473" y="264" text-anchor="end">2026-11-17T02-50-40</text>
-<text class="tick" transform="rotate(-40 581.4736842105264 264)" x="581.4736842105264" y="264" text-anchor="end">2026-11-17T09-16-23</text>
-<text class="tick" transform="rotate(-40 621.8947368421052 264)" x="621.8947368421052" y="264" text-anchor="end">2026-11-17T09-16-49</text>
-<text class="tick" transform="rotate(-40 662.3157894736842 264)" x="662.3157894736842" y="264" text-anchor="end">2026-11-18T10-07-56</text>
-<text class="tick" transform="rotate(-40 702.7368421052631 264)" x="702.7368421052631" y="264" text-anchor="end">2026-11-18T10-25-39</text>
-<text class="tick" transform="rotate(-40 743.1578947368421 264)" x="743.1578947368421" y="264" text-anchor="end">2026-11-18T10-25-39</text>
-<text class="tick" transform="rotate(-40 783.578947368421 264)" x="783.578947368421" y="264" text-anchor="end">2026-11-18T10-28-40</text>
-<text class="tick" transform="rotate(-40 824 264)" x="824" y="264" text-anchor="end">2026-11-18T10-28-40</text>
-<circle cx="783.6" cy="16.0" r="4" fill="var(--series-1)"><title>claude-haiku-4-5-20251001, 2026-11-18T10-28-40: 100%</title></circle>
-<polyline fill="none" stroke="var(--series-2)" stroke-width="2" points="56.0,16.0 96.4,16.0 136.8,16.0 177.3,16.0 338.9,93.3 379.4,132.0 419.8,16.0 581.5,16.0 621.9,16.0 662.3,16.0"/>
-<circle cx="56.0" cy="16.0" r="4" fill="var(--series-2)"><title>claude-opus-5-5, 2026-11-16T07-37-07: 100%</title></circle>
-<circle cx="96.4" cy="16.0" r="4" fill="var(--series-2)"><title>claude-opus-5-5, 2026-11-16T08-17-33: 100%</title></circle>
-<circle cx="136.8" cy="16.0" r="4" fill="var(--series-2)"><title>claude-opus-5-5, 2026-11-16T12-01-24: 100%</title></circle>
-<circle cx="177.3" cy="16.0" r="4" fill="var(--series-2)"><title>claude-opus-5-5, 2026-11-16T12-04-09: 100%</title></circle>
-<circle cx="338.9" cy="93.3" r="4" fill="var(--series-2)"><title>claude-opus-5-5, 2026-11-16T19-31-54: 67%</title></circle>
-<circle cx="379.4" cy="132.0" r="4" fill="var(--series-2)"><title>claude-opus-5-5, 2026-11-16T19-54-04: 50%</title></circle>
-<circle cx="419.8" cy="16.0" r="4" fill="var(--series-2)"><title>claude-opus-5-5, 2026-11-16T19-57-32: 100%</title></circle>
-<circle cx="581.5" cy="16.0" r="4" fill="var(--series-2)"><title>claude-opus-5-5, 2026-11-17T09-16-23: 100%</title></circle>
-<circle cx="621.9" cy="16.0" r="4" fill="var(--series-2)"><title>claude-opus-5-5, 2026-11-17T09-16-49: 100%</title></circle>
-<circle cx="662.3" cy="16.0" r="4" fill="var(--series-2)"><title>claude-opus-5-5, 2026-11-18T10-07-56: 100%</title></circle>
-<circle cx="824.0" cy="16.0" r="4" fill="var(--series-3)"><title>claude-sonnet-5, 2026-11-18T10-28-40: 100%</title></circle>
-<polyline fill="none" stroke="var(--series-4)" stroke-width="2" points="217.7,214.9 460.2,82.3"/>
-<circle cx="217.7" cy="214.9" r="4" fill="var(--series-4)"><title>deepseek.v3.2, 2026-11-16T18-26-38: 14%</title></circle>
-<circle cx="460.2" cy="82.3" r="4" fill="var(--series-4)"><title>deepseek.v3.2, 2026-11-16T20-35-38: 71%</title></circle>
-<circle cx="258.1" cy="37.1" r="4" fill="var(--series-5)"><title>global.openai.gpt-6-astra, 2026-11-16T19-01-38: 91%</title></circle>
-<circle cx="298.5" cy="42.8" r="4" fill="var(--series-6)"><title>global.openai.gpt-6-sol, 2026-11-16T19-09-35: 88%</title></circle>
-<circle cx="702.7" cy="248.0" r="4" fill="var(--series-7)"><title>haiku, 2026-11-18T10-25-39: 0%</title></circle>
-<circle cx="541.1" cy="248.0" r="4" fill="var(--series-8)"><title>moonshotai.kimi-k3.1, 2026-11-17T02-50-40: 0%</title></circle>
-<circle cx="500.6" cy="115.4" r="4" fill="var(--series-1)"><title>qwen.qwen3-235b-a22b-2507-v1:0, 2026-11-17T02-26-35: 57%</title></circle>
-<circle cx="743.2" cy="248.0" r="4" fill="var(--series-2)"><title>sonnet, 2026-11-18T10-25-39: 0%</title></circle>
+<text class="tick" transform="rotate(-40 56 264)" x="56" y="264" text-anchor="end">2026-11-16T09-19-53</text>
+<text class="tick" transform="rotate(-40 71.6734693877551 264)" x="71.6734693877551" y="264" text-anchor="end">2026-11-16T09-25-48</text>
+<text class="tick" transform="rotate(-40 87.34693877551021 264)" x="87.34693877551021" y="264" text-anchor="end">2026-11-16T09-37-13</text>
+<text class="tick" transform="rotate(-40 103.0204081632653 264)" x="103.0204081632653" y="264" text-anchor="end">2026-11-16T12-11-15</text>
+<text class="tick" transform="rotate(-40 118.6938775510204 264)" x="118.6938775510204" y="264" text-anchor="end">2026-11-16T12-31-21</text>
+<text class="tick" transform="rotate(-40 134.3673469387755 264)" x="134.3673469387755" y="264" text-anchor="end">2026-11-16T12-35-54</text>
+<text class="tick" transform="rotate(-40 150.0408163265306 264)" x="150.0408163265306" y="264" text-anchor="end">2026-11-16T18-21-32</text>
+<text class="tick" transform="rotate(-40 165.71428571428572 264)" x="165.71428571428572" y="264" text-anchor="end">2026-11-16T18-25-41</text>
+<text class="tick" transform="rotate(-40 181.3877551020408 264)" x="181.3877551020408" y="264" text-anchor="end">2026-11-16T18-26-38</text>
+<text class="tick" transform="rotate(-40 197.06122448979593 264)" x="197.06122448979593" y="264" text-anchor="end">2026-11-16T18-44-42</text>
+<text class="tick" transform="rotate(-40 212.73469387755102 264)" x="212.73469387755102" y="264" text-anchor="end">2026-11-16T18-47-24</text>
+<text class="tick" transform="rotate(-40 228.40816326530611 264)" x="228.40816326530611" y="264" text-anchor="end">2026-11-16T19-00-13</text>
+<text class="tick" transform="rotate(-40 244.0816326530612 264)" x="244.0816326530612" y="264" text-anchor="end">2026-11-16T19-00-28</text>
+<text class="tick" transform="rotate(-40 259.7551020408163 264)" x="259.7551020408163" y="264" text-anchor="end">2026-11-16T19-01-24</text>
+<text class="tick" transform="rotate(-40 275.42857142857144 264)" x="275.42857142857144" y="264" text-anchor="end">2026-11-16T19-01-38</text>
+<text class="tick" transform="rotate(-40 291.1020408163265 264)" x="291.1020408163265" y="264" text-anchor="end">2026-11-16T19-08-49</text>
+<text class="tick" transform="rotate(-40 306.7755102040816 264)" x="306.7755102040816" y="264" text-anchor="end">2026-11-16T19-09-35</text>
+<text class="tick" transform="rotate(-40 322.44897959183675 264)" x="322.44897959183675" y="264" text-anchor="end">2026-11-16T19-42-00</text>
+<text class="tick" transform="rotate(-40 338.12244897959187 264)" x="338.12244897959187" y="264" text-anchor="end">2026-11-16T19-42-09</text>
+<text class="tick" transform="rotate(-40 353.7959183673469 264)" x="353.7959183673469" y="264" text-anchor="end">2026-11-16T19-42-23</text>
+<text class="tick" transform="rotate(-40 369.46938775510205 264)" x="369.46938775510205" y="264" text-anchor="end">2026-11-16T19-42-44</text>
+<text class="tick" transform="rotate(-40 385.1428571428571 264)" x="385.1428571428571" y="264" text-anchor="end">2026-11-16T19-43-42</text>
+<text class="tick" transform="rotate(-40 400.81632653061223 264)" x="400.81632653061223" y="264" text-anchor="end">2026-11-16T19-44-32</text>
+<text class="tick" transform="rotate(-40 416.48979591836735 264)" x="416.48979591836735" y="264" text-anchor="end">2026-11-16T20-35-38</text>
+<text class="tick" transform="rotate(-40 432.1632653061224 264)" x="432.1632653061224" y="264" text-anchor="end">2026-11-17T02-26-35</text>
+<text class="tick" transform="rotate(-40 447.8367346938776 264)" x="447.8367346938776" y="264" text-anchor="end">2026-11-17T02-27-02</text>
+<text class="tick" transform="rotate(-40 463.51020408163265 264)" x="463.51020408163265" y="264" text-anchor="end">2026-11-17T02-39-55</text>
+<text class="tick" transform="rotate(-40 479.1836734693877 264)" x="479.1836734693877" y="264" text-anchor="end">2026-11-17T02-46-19</text>
+<text class="tick" transform="rotate(-40 494.85714285714283 264)" x="494.85714285714283" y="264" text-anchor="end">2026-11-17T02-47-59</text>
+<text class="tick" transform="rotate(-40 510.53061224489795 264)" x="510.53061224489795" y="264" text-anchor="end">2026-11-17T02-50-40</text>
+<text class="tick" transform="rotate(-40 526.204081632653 264)" x="526.204081632653" y="264" text-anchor="end">2026-11-17T02-54-39</text>
+<text class="tick" transform="rotate(-40 541.8775510204082 264)" x="541.8775510204082" y="264" text-anchor="end">2026-11-17T02-55-10</text>
+<text class="tick" transform="rotate(-40 557.5510204081633 264)" x="557.5510204081633" y="264" text-anchor="end">2026-11-17T02-56-39</text>
+<text class="tick" transform="rotate(-40 573.2244897959183 264)" x="573.2244897959183" y="264" text-anchor="end">2026-11-18T09-33-12</text>
+<text class="tick" transform="rotate(-40 588.8979591836735 264)" x="588.8979591836735" y="264" text-anchor="end">2026-11-18T09-40-03</text>
+<text class="tick" transform="rotate(-40 604.5714285714286 264)" x="604.5714285714286" y="264" text-anchor="end">2026-11-18T09-41-03</text>
+<text class="tick" transform="rotate(-40 620.2448979591837 264)" x="620.2448979591837" y="264" text-anchor="end">2026-11-18T10-30-54</text>
+<text class="tick" transform="rotate(-40 635.9183673469388 264)" x="635.9183673469388" y="264" text-anchor="end">2026-11-18T10-30-54</text>
+<text class="tick" transform="rotate(-40 651.5918367346939 264)" x="651.5918367346939" y="264" text-anchor="end">2026-11-18T10-30-54</text>
+<text class="tick" transform="rotate(-40 667.2653061224489 264)" x="667.2653061224489" y="264" text-anchor="end">2026-11-18T10-30-54</text>
+<text class="tick" transform="rotate(-40 682.9387755102041 264)" x="682.9387755102041" y="264" text-anchor="end">2026-11-18T10-30-54</text>
+<text class="tick" transform="rotate(-40 698.6122448979593 264)" x="698.6122448979593" y="264" text-anchor="end">2026-11-18T10-30-54</text>
+<text class="tick" transform="rotate(-40 714.2857142857142 264)" x="714.2857142857142" y="264" text-anchor="end">2026-11-18T10-30-54</text>
+<text class="tick" transform="rotate(-40 729.9591836734694 264)" x="729.9591836734694" y="264" text-anchor="end">2026-11-18T10-30-54</text>
+<text class="tick" transform="rotate(-40 745.6326530612245 264)" x="745.6326530612245" y="264" text-anchor="end">2026-11-18T10-30-54</text>
+<text class="tick" transform="rotate(-40 761.3061224489796 264)" x="761.3061224489796" y="264" text-anchor="end">2026-11-18T10-37-56</text>
+<text class="tick" transform="rotate(-40 776.9795918367347 264)" x="776.9795918367347" y="264" text-anchor="end">2026-11-18T10-37-56</text>
+<text class="tick" transform="rotate(-40 792.6530612244898 264)" x="792.6530612244898" y="264" text-anchor="end">2026-11-18T10-37-56</text>
+<text class="tick" transform="rotate(-40 808.3265306122448 264)" x="808.3265306122448" y="264" text-anchor="end">2026-11-18T10-37-56</text>
+<text class="tick" transform="rotate(-40 824 264)" x="824" y="264" text-anchor="end">2026-11-18T10-37-56</text>
+<polyline fill="none" stroke="var(--series-1)" stroke-width="2" points="118.7,16.0 134.4,176.6 150.0,58.2 181.4,214.9 416.5,82.3 620.2,16.0"/>
+<circle cx="118.7" cy="16.0" r="4" fill="var(--series-1)"><title>deepseek.v3.2, 2026-11-16T12-31-21: 100%</title></circle>
+<circle cx="134.4" cy="176.6" r="4" fill="var(--series-1)"><title>deepseek.v3.2, 2026-11-16T12-35-54: 31%</title></circle>
+<circle cx="150.0" cy="58.2" r="4" fill="var(--series-1)"><title>deepseek.v3.2, 2026-11-16T18-21-32: 82%</title></circle>
+<circle cx="181.4" cy="214.9" r="4" fill="var(--series-1)"><title>deepseek.v3.2, 2026-11-16T18-26-38: 14%</title></circle>
+<circle cx="416.5" cy="82.3" r="4" fill="var(--series-1)"><title>deepseek.v3.2, 2026-11-16T20-35-38: 71%</title></circle>
+<circle cx="620.2" cy="16.0" r="4" fill="var(--series-1)"><title>deepseek.v3.2, 2026-11-18T10-30-54: 100%</title></circle>
+<polyline fill="none" stroke="var(--series-2)" stroke-width="2" points="56.0,103.0 212.7,16.0 244.1,16.0 259.8,16.0 338.1,16.0 761.3,38.1"/>
+<circle cx="56.0" cy="103.0" r="4" fill="var(--series-2)"><title>eu.anthropic.claude-opus-5-5, 2026-11-16T09-19-53: 63%</title></circle>
+<circle cx="212.7" cy="16.0" r="4" fill="var(--series-2)"><title>eu.anthropic.claude-opus-5-5, 2026-11-16T18-47-24: 100%</title></circle>
+<circle cx="244.1" cy="16.0" r="4" fill="var(--series-2)"><title>eu.anthropic.claude-opus-5-5, 2026-11-16T19-00-28: 100%</title></circle>
+<circle cx="259.8" cy="16.0" r="4" fill="var(--series-2)"><title>eu.anthropic.claude-opus-5-5, 2026-11-16T19-01-24: 100%</title></circle>
+<circle cx="338.1" cy="16.0" r="4" fill="var(--series-2)"><title>eu.anthropic.claude-opus-5-5, 2026-11-16T19-42-09: 100%</title></circle>
+<circle cx="761.3" cy="38.1" r="4" fill="var(--series-2)"><title>eu.anthropic.claude-opus-5-5, 2026-11-18T10-37-56: 90%</title></circle>
+<polyline fill="none" stroke="var(--series-3)" stroke-width="2" points="71.7,74.0 197.1,58.2 635.9,16.0"/>
+<circle cx="71.7" cy="74.0" r="4" fill="var(--series-3)"><title>eu.anthropic.claude-sonnet-5, 2026-11-16T09-25-48: 75%</title></circle>
+<circle cx="197.1" cy="58.2" r="4" fill="var(--series-3)"><title>eu.anthropic.claude-sonnet-5, 2026-11-16T18-44-42: 82%</title></circle>
+<circle cx="635.9" cy="16.0" r="4" fill="var(--series-3)"><title>eu.anthropic.claude-sonnet-5, 2026-11-18T10-30-54: 100%</title></circle>
+<polyline fill="none" stroke="var(--series-4)" stroke-width="2" points="103.0,100.4 385.1,248.0 400.8,248.0"/>
+<circle cx="103.0" cy="100.4" r="4" fill="var(--series-4)"><title>global.anthropic.claude-haiku-4-5-20251001-v1:0, 2026-11-16T12-11-15: 64%</title></circle>
+<circle cx="385.1" cy="248.0" r="4" fill="var(--series-4)"><title>global.anthropic.claude-haiku-4-5-20251001-v1:0, 2026-11-16T19-43-42: 0%</title></circle>
+<circle cx="400.8" cy="248.0" r="4" fill="var(--series-4)"><title>global.anthropic.claude-haiku-4-5-20251001-v1:0, 2026-11-16T19-44-32: 0%</title></circle>
+<polyline fill="none" stroke="var(--series-5)" stroke-width="2" points="526.2,16.0 541.9,32.6 557.6,110.9 651.6,16.0 777.0,38.1"/>
+<circle cx="526.2" cy="16.0" r="4" fill="var(--series-5)"><title>global.moonshotai.kimi-k3.1, 2026-11-17T02-54-39: 100%</title></circle>
+<circle cx="541.9" cy="32.6" r="4" fill="var(--series-5)"><title>global.moonshotai.kimi-k3.1, 2026-11-17T02-55-10: 93%</title></circle>
+<circle cx="557.6" cy="110.9" r="4" fill="var(--series-5)"><title>global.moonshotai.kimi-k3.1, 2026-11-17T02-56-39: 59%</title></circle>
+<circle cx="651.6" cy="16.0" r="4" fill="var(--series-5)"><title>global.moonshotai.kimi-k3.1, 2026-11-18T10-30-54: 100%</title></circle>
+<circle cx="777.0" cy="38.1" r="4" fill="var(--series-5)"><title>global.moonshotai.kimi-k3.1, 2026-11-18T10-37-56: 90%</title></circle>
+<polyline fill="none" stroke="var(--series-6)" stroke-width="2" points="228.4,37.1 275.4,37.1 573.2,32.6 588.9,16.0 604.6,56.9 667.3,16.0 792.7,60.2"/>
+<circle cx="228.4" cy="37.1" r="4" fill="var(--series-6)"><title>global.openai.gpt-6-astra, 2026-11-16T19-00-13: 91%</title></circle>
+<circle cx="275.4" cy="37.1" r="4" fill="var(--series-6)"><title>global.openai.gpt-6-astra, 2026-11-16T19-01-38: 91%</title></circle>
+<circle cx="573.2" cy="32.6" r="4" fill="var(--series-6)"><title>global.openai.gpt-6-astra, 2026-11-18T09-33-12: 93%</title></circle>
+<circle cx="588.9" cy="16.0" r="4" fill="var(--series-6)"><title>global.openai.gpt-6-astra, 2026-11-18T09-40-03: 100%</title></circle>
+<circle cx="604.6" cy="56.9" r="4" fill="var(--series-6)"><title>global.openai.gpt-6-astra, 2026-11-18T09-41-03: 82%</title></circle>
+<circle cx="667.3" cy="16.0" r="4" fill="var(--series-6)"><title>global.openai.gpt-6-astra, 2026-11-18T10-30-54: 100%</title></circle>
+<circle cx="792.7" cy="60.2" r="4" fill="var(--series-6)"><title>global.openai.gpt-6-astra, 2026-11-18T10-37-56: 81%</title></circle>
+<polyline fill="none" stroke="var(--series-7)" stroke-width="2" points="369.5,16.0 682.9,248.0"/>
+<circle cx="369.5" cy="16.0" r="4" fill="var(--series-7)"><title>global.openai.gpt-6-luna, 2026-11-16T19-42-44: 100%</title></circle>
+<circle cx="682.9" cy="248.0" r="4" fill="var(--series-7)"><title>global.openai.gpt-6-luna, 2026-11-18T10-30-54: 0%</title></circle>
+<polyline fill="none" stroke="var(--series-8)" stroke-width="2" points="87.3,25.7 291.1,16.0 306.8,42.8 322.4,16.0 353.8,16.0"/>
+<circle cx="87.3" cy="25.7" r="4" fill="var(--series-8)"><title>global.openai.gpt-6-sol, 2026-11-16T09-37-13: 96%</title></circle>
+<circle cx="291.1" cy="16.0" r="4" fill="var(--series-8)"><title>global.openai.gpt-6-sol, 2026-11-16T19-08-49: 100%</title></circle>
+<circle cx="306.8" cy="42.8" r="4" fill="var(--series-8)"><title>global.openai.gpt-6-sol, 2026-11-16T19-09-35: 88%</title></circle>
+<circle cx="322.4" cy="16.0" r="4" fill="var(--series-8)"><title>global.openai.gpt-6-sol, 2026-11-16T19-42-00: 100%</title></circle>
+<circle cx="353.8" cy="16.0" r="4" fill="var(--series-8)"><title>global.openai.gpt-6-sol, 2026-11-16T19-42-23: 100%</title></circle>
+<polyline fill="none" stroke="var(--series-1)" stroke-width="2" points="494.9,248.0 698.6,248.0"/>
+<circle cx="494.9" cy="248.0" r="4" fill="var(--series-1)"><title>global.zai.glm-5.3, 2026-11-17T02-47-59: 0%</title></circle>
+<circle cx="698.6" cy="248.0" r="4" fill="var(--series-1)"><title>global.zai.glm-5.3, 2026-11-18T10-30-54: 0%</title></circle>
+<polyline fill="none" stroke="var(--series-2)" stroke-width="2" points="165.7,205.8 714.3,248.0"/>
+<circle cx="165.7" cy="205.8" r="4" fill="var(--series-2)"><title>mistral.devstral-2-123b, 2026-11-16T18-25-41: 18%</title></circle>
+<circle cx="714.3" cy="248.0" r="4" fill="var(--series-2)"><title>mistral.devstral-2-123b, 2026-11-18T10-30-54: 0%</title></circle>
+<polyline fill="none" stroke="var(--series-3)" stroke-width="2" points="447.8,248.0 510.5,248.0"/>
+<circle cx="447.8" cy="248.0" r="4" fill="var(--series-3)"><title>moonshotai.kimi-k3.1, 2026-11-17T02-27-02: 0%</title></circle>
+<circle cx="510.5" cy="248.0" r="4" fill="var(--series-3)"><title>moonshotai.kimi-k3.1, 2026-11-17T02-50-40: 0%</title></circle>
+<polyline fill="none" stroke="var(--series-4)" stroke-width="2" points="730.0,16.0 808.3,115.4"/>
+<circle cx="730.0" cy="16.0" r="4" fill="var(--series-4)"><title>openai.gpt-oss-120b-1:0, 2026-11-18T10-30-54: 100%</title></circle>
+<circle cx="808.3" cy="115.4" r="4" fill="var(--series-4)"><title>openai.gpt-oss-120b-1:0, 2026-11-18T10-37-56: 57%</title></circle>
+<polyline fill="none" stroke="var(--series-5)" stroke-width="2" points="432.2,115.4 463.5,248.0 479.2,248.0 745.6,16.0 824.0,159.6"/>
+<circle cx="432.2" cy="115.4" r="4" fill="var(--series-5)"><title>qwen.qwen3-235b-a22b-2507-v1:0, 2026-11-17T02-26-35: 57%</title></circle>
+<circle cx="463.5" cy="248.0" r="4" fill="var(--series-5)"><title>qwen.qwen3-235b-a22b-2507-v1:0, 2026-11-17T02-39-55: 0%</title></circle>
+<circle cx="479.2" cy="248.0" r="4" fill="var(--series-5)"><title>qwen.qwen3-235b-a22b-2507-v1:0, 2026-11-17T02-46-19: 0%</title></circle>
+<circle cx="745.6" cy="16.0" r="4" fill="var(--series-5)"><title>qwen.qwen3-235b-a22b-2507-v1:0, 2026-11-18T10-30-54: 100%</title></circle>
+<circle cx="824.0" cy="159.6" r="4" fill="var(--series-5)"><title>qwen.qwen3-235b-a22b-2507-v1:0, 2026-11-18T10-37-56: 38%</title></circle>
 </svg>
 <p class="legend">
-<span class="key"><span class="swatch" style="background: var(--series-1)"></span>claude-haiku-4-5-20251001</span>
-<span class="key"><span class="swatch" style="background: var(--series-2)"></span>claude-opus-5-5</span>
-<span class="key"><span class="swatch" style="background: var(--series-3)"></span>claude-sonnet-5</span>
-<span class="key"><span class="swatch" style="background: var(--series-4)"></span>deepseek.v3.2</span>
-<span class="key"><span class="swatch" style="background: var(--series-5)"></span>global.openai.gpt-6-astra</span>
-<span class="key"><span class="swatch" style="background: var(--series-6)"></span>global.openai.gpt-6-sol</span>
-<span class="key"><span class="swatch" style="background: var(--series-7)"></span>haiku</span>
-<span class="key"><span class="swatch" style="background: var(--series-8)"></span>moonshotai.kimi-k3.1</span>
-<span class="key"><span class="swatch" style="background: var(--series-1)"></span>qwen.qwen3-235b-a22b-2507-v1:0</span>
-<span class="key"><span class="swatch" style="background: var(--series-2)"></span>sonnet</span>
+<span class="key"><span class="swatch" style="background: var(--series-1)"></span>deepseek.v3.2</span>
+<span class="key"><span class="swatch" style="background: var(--series-2)"></span>eu.anthropic.claude-opus-5-5</span>
+<span class="key"><span class="swatch" style="background: var(--series-3)"></span>eu.anthropic.claude-sonnet-5</span>
+<span class="key"><span class="swatch" style="background: var(--series-4)"></span>global.anthropic.claude-haiku-4-5-20251001-v1:0</span>
+<span class="key"><span class="swatch" style="background: var(--series-5)"></span>global.moonshotai.kimi-k3.1</span>
+<span class="key"><span class="swatch" style="background: var(--series-6)"></span>global.openai.gpt-6-astra</span>
+<span class="key"><span class="swatch" style="background: var(--series-7)"></span>global.openai.gpt-6-luna</span>
+<span class="key"><span class="swatch" style="background: var(--series-8)"></span>global.openai.gpt-6-sol</span>
+<span class="key"><span class="swatch" style="background: var(--series-1)"></span>global.zai.glm-5.3</span>
+<span class="key"><span class="swatch" style="background: var(--series-2)"></span>mistral.devstral-2-123b</span>
+<span class="key"><span class="swatch" style="background: var(--series-3)"></span>moonshotai.kimi-k3.1</span>
+<span class="key"><span class="swatch" style="background: var(--series-4)"></span>openai.gpt-oss-120b-1:0</span>
+<span class="key"><span class="swatch" style="background: var(--series-5)"></span>qwen.qwen3-235b-a22b-2507-v1:0</span>
 </p>
 <h2>Total Cost per Run over Time</h2>
 <svg viewBox="0 0 840 320" role="img" aria-label="Total Cost per Run over Time">
@@ -206,60 +302,134 @@ costs of non-Anthropic gateway models are unreliable). Click a column header to 
 <text class="tick" x="48" y="77.99999999999997" text-anchor="end">$41</text>
 <line class="grid" x1="56" y1="16" x2="824" y2="16"/>
 <text class="tick" x="48" y="20" text-anchor="end">$55</text>
-<text class="tick" transform="rotate(-40 56 264)" x="56" y="264" text-anchor="end">2026-11-16T07-37-07</text>
-<text class="tick" transform="rotate(-40 96.42105263157895 264)" x="96.42105263157895" y="264" text-anchor="end">2026-11-16T08-17-33</text>
-<text class="tick" transform="rotate(-40 136.8421052631579 264)" x="136.8421052631579" y="264" text-anchor="end">2026-11-16T12-01-24</text>
-<text class="tick" transform="rotate(-40 177.26315789473682 264)" x="177.26315789473682" y="264" text-anchor="end">2026-11-16T12-04-09</text>
-<text class="tick" transform="rotate(-40 217.68421052631578 264)" x="217.68421052631578" y="264" text-anchor="end">2026-11-16T18-26-38</text>
-<text class="tick" transform="rotate(-40 258.10526315789474 264)" x="258.10526315789474" y="264" text-anchor="end">2026-11-16T19-01-38</text>
-<text class="tick" transform="rotate(-40 298.52631578947364 264)" x="298.52631578947364" y="264" text-anchor="end">2026-11-16T19-09-35</text>
-<text class="tick" transform="rotate(-40 338.9473684210526 264)" x="338.9473684210526" y="264" text-anchor="end">2026-11-16T19-31-54</text>
-<text class="tick" transform="rotate(-40 379.36842105263156 264)" x="379.36842105263156" y="264" text-anchor="end">2026-11-16T19-54-04</text>
-<text class="tick" transform="rotate(-40 419.7894736842105 264)" x="419.7894736842105" y="264" text-anchor="end">2026-11-16T19-57-32</text>
-<text class="tick" transform="rotate(-40 460.2105263157895 264)" x="460.2105263157895" y="264" text-anchor="end">2026-11-16T20-35-38</text>
-<text class="tick" transform="rotate(-40 500.63157894736844 264)" x="500.63157894736844" y="264" text-anchor="end">2026-11-17T02-26-35</text>
-<text class="tick" transform="rotate(-40 541.0526315789473 264)" x="541.0526315789473" y="264" text-anchor="end">2026-11-17T02-50-40</text>
-<text class="tick" transform="rotate(-40 581.4736842105264 264)" x="581.4736842105264" y="264" text-anchor="end">2026-11-17T09-16-23</text>
-<text class="tick" transform="rotate(-40 621.8947368421052 264)" x="621.8947368421052" y="264" text-anchor="end">2026-11-17T09-16-49</text>
-<text class="tick" transform="rotate(-40 662.3157894736842 264)" x="662.3157894736842" y="264" text-anchor="end">2026-11-18T10-07-56</text>
-<text class="tick" transform="rotate(-40 702.7368421052631 264)" x="702.7368421052631" y="264" text-anchor="end">2026-11-18T10-25-39</text>
-<text class="tick" transform="rotate(-40 743.1578947368421 264)" x="743.1578947368421" y="264" text-anchor="end">2026-11-18T10-25-39</text>
-<text class="tick" transform="rotate(-40 783.578947368421 264)" x="783.578947368421" y="264" text-anchor="end">2026-11-18T10-28-40</text>
-<text class="tick" transform="rotate(-40 824 264)" x="824" y="264" text-anchor="end">2026-11-18T10-28-40</text>
-<circle cx="783.6" cy="247.4" r="4" fill="var(--series-1)"><title>claude-haiku-4-5-20251001, 2026-11-18T10-28-40: $0.15</title></circle>
-<polyline fill="none" stroke="var(--series-2)" stroke-width="2" points="56.0,180.4 96.4,220.3 136.8,228.1 177.3,232.9 338.9,216.3 379.4,238.4 419.8,227.9 581.5,246.0 621.9,246.5 662.3,243.9"/>
-<circle cx="56.0" cy="180.4" r="4" fill="var(--series-2)"><title>claude-opus-5-5, 2026-11-16T07-37-07: $15.95</title></circle>
-<circle cx="96.4" cy="220.3" r="4" fill="var(--series-2)"><title>claude-opus-5-5, 2026-11-16T08-17-33: $6.54</title></circle>
-<circle cx="136.8" cy="228.1" r="4" fill="var(--series-2)"><title>claude-opus-5-5, 2026-11-16T12-01-24: $4.70</title></circle>
-<circle cx="177.3" cy="232.9" r="4" fill="var(--series-2)"><title>claude-opus-5-5, 2026-11-16T12-04-09: $3.57</title></circle>
-<circle cx="338.9" cy="216.3" r="4" fill="var(--series-2)"><title>claude-opus-5-5, 2026-11-16T19-31-54: $7.48</title></circle>
-<circle cx="379.4" cy="238.4" r="4" fill="var(--series-2)"><title>claude-opus-5-5, 2026-11-16T19-54-04: $2.26</title></circle>
-<circle cx="419.8" cy="227.9" r="4" fill="var(--series-2)"><title>claude-opus-5-5, 2026-11-16T19-57-32: $4.75</title></circle>
-<circle cx="581.5" cy="246.0" r="4" fill="var(--series-2)"><title>claude-opus-5-5, 2026-11-17T09-16-23: $0.47</title></circle>
-<circle cx="621.9" cy="246.5" r="4" fill="var(--series-2)"><title>claude-opus-5-5, 2026-11-17T09-16-49: $0.36</title></circle>
-<circle cx="662.3" cy="243.9" r="4" fill="var(--series-2)"><title>claude-opus-5-5, 2026-11-18T10-07-56: $0.96</title></circle>
-<circle cx="824.0" cy="246.7" r="4" fill="var(--series-3)"><title>claude-sonnet-5, 2026-11-18T10-28-40: $0.31</title></circle>
-<polyline fill="none" stroke="var(--series-4)" stroke-width="2" points="217.7,16.0 460.2,214.2"/>
-<circle cx="217.7" cy="16.0" r="4" fill="var(--series-4)"><title>deepseek.v3.2, 2026-11-16T18-26-38: $54.71</title></circle>
-<circle cx="460.2" cy="214.2" r="4" fill="var(--series-4)"><title>deepseek.v3.2, 2026-11-16T20-35-38: $7.98</title></circle>
-<circle cx="258.1" cy="237.0" r="4" fill="var(--series-5)"><title>global.openai.gpt-6-astra, 2026-11-16T19-01-38: $2.59</title></circle>
-<circle cx="298.5" cy="130.6" r="4" fill="var(--series-6)"><title>global.openai.gpt-6-sol, 2026-11-16T19-09-35: $27.68</title></circle>
-<circle cx="702.7" cy="239.5" r="4" fill="var(--series-7)"><title>haiku, 2026-11-18T10-25-39: $2.00</title></circle>
-<circle cx="541.1" cy="205.6" r="4" fill="var(--series-8)"><title>moonshotai.kimi-k3.1, 2026-11-17T02-50-40: $10.00</title></circle>
-<circle cx="500.6" cy="214.7" r="4" fill="var(--series-1)"><title>qwen.qwen3-235b-a22b-2507-v1:0, 2026-11-17T02-26-35: $7.85</title></circle>
-<circle cx="743.2" cy="239.5" r="4" fill="var(--series-2)"><title>sonnet, 2026-11-18T10-25-39: $2.00</title></circle>
+<text class="tick" transform="rotate(-40 56 264)" x="56" y="264" text-anchor="end">2026-11-16T09-19-53</text>
+<text class="tick" transform="rotate(-40 71.6734693877551 264)" x="71.6734693877551" y="264" text-anchor="end">2026-11-16T09-25-48</text>
+<text class="tick" transform="rotate(-40 87.34693877551021 264)" x="87.34693877551021" y="264" text-anchor="end">2026-11-16T09-37-13</text>
+<text class="tick" transform="rotate(-40 103.0204081632653 264)" x="103.0204081632653" y="264" text-anchor="end">2026-11-16T12-11-15</text>
+<text class="tick" transform="rotate(-40 118.6938775510204 264)" x="118.6938775510204" y="264" text-anchor="end">2026-11-16T12-31-21</text>
+<text class="tick" transform="rotate(-40 134.3673469387755 264)" x="134.3673469387755" y="264" text-anchor="end">2026-11-16T12-35-54</text>
+<text class="tick" transform="rotate(-40 150.0408163265306 264)" x="150.0408163265306" y="264" text-anchor="end">2026-11-16T18-21-32</text>
+<text class="tick" transform="rotate(-40 165.71428571428572 264)" x="165.71428571428572" y="264" text-anchor="end">2026-11-16T18-25-41</text>
+<text class="tick" transform="rotate(-40 181.3877551020408 264)" x="181.3877551020408" y="264" text-anchor="end">2026-11-16T18-26-38</text>
+<text class="tick" transform="rotate(-40 197.06122448979593 264)" x="197.06122448979593" y="264" text-anchor="end">2026-11-16T18-44-42</text>
+<text class="tick" transform="rotate(-40 212.73469387755102 264)" x="212.73469387755102" y="264" text-anchor="end">2026-11-16T18-47-24</text>
+<text class="tick" transform="rotate(-40 228.40816326530611 264)" x="228.40816326530611" y="264" text-anchor="end">2026-11-16T19-00-13</text>
+<text class="tick" transform="rotate(-40 244.0816326530612 264)" x="244.0816326530612" y="264" text-anchor="end">2026-11-16T19-00-28</text>
+<text class="tick" transform="rotate(-40 259.7551020408163 264)" x="259.7551020408163" y="264" text-anchor="end">2026-11-16T19-01-24</text>
+<text class="tick" transform="rotate(-40 275.42857142857144 264)" x="275.42857142857144" y="264" text-anchor="end">2026-11-16T19-01-38</text>
+<text class="tick" transform="rotate(-40 291.1020408163265 264)" x="291.1020408163265" y="264" text-anchor="end">2026-11-16T19-08-49</text>
+<text class="tick" transform="rotate(-40 306.7755102040816 264)" x="306.7755102040816" y="264" text-anchor="end">2026-11-16T19-09-35</text>
+<text class="tick" transform="rotate(-40 322.44897959183675 264)" x="322.44897959183675" y="264" text-anchor="end">2026-11-16T19-42-00</text>
+<text class="tick" transform="rotate(-40 338.12244897959187 264)" x="338.12244897959187" y="264" text-anchor="end">2026-11-16T19-42-09</text>
+<text class="tick" transform="rotate(-40 353.7959183673469 264)" x="353.7959183673469" y="264" text-anchor="end">2026-11-16T19-42-23</text>
+<text class="tick" transform="rotate(-40 369.46938775510205 264)" x="369.46938775510205" y="264" text-anchor="end">2026-11-16T19-42-44</text>
+<text class="tick" transform="rotate(-40 385.1428571428571 264)" x="385.1428571428571" y="264" text-anchor="end">2026-11-16T19-43-42</text>
+<text class="tick" transform="rotate(-40 400.81632653061223 264)" x="400.81632653061223" y="264" text-anchor="end">2026-11-16T19-44-32</text>
+<text class="tick" transform="rotate(-40 416.48979591836735 264)" x="416.48979591836735" y="264" text-anchor="end">2026-11-16T20-35-38</text>
+<text class="tick" transform="rotate(-40 432.1632653061224 264)" x="432.1632653061224" y="264" text-anchor="end">2026-11-17T02-26-35</text>
+<text class="tick" transform="rotate(-40 447.8367346938776 264)" x="447.8367346938776" y="264" text-anchor="end">2026-11-17T02-27-02</text>
+<text class="tick" transform="rotate(-40 463.51020408163265 264)" x="463.51020408163265" y="264" text-anchor="end">2026-11-17T02-39-55</text>
+<text class="tick" transform="rotate(-40 479.1836734693877 264)" x="479.1836734693877" y="264" text-anchor="end">2026-11-17T02-46-19</text>
+<text class="tick" transform="rotate(-40 494.85714285714283 264)" x="494.85714285714283" y="264" text-anchor="end">2026-11-17T02-47-59</text>
+<text class="tick" transform="rotate(-40 510.53061224489795 264)" x="510.53061224489795" y="264" text-anchor="end">2026-11-17T02-50-40</text>
+<text class="tick" transform="rotate(-40 526.204081632653 264)" x="526.204081632653" y="264" text-anchor="end">2026-11-17T02-54-39</text>
+<text class="tick" transform="rotate(-40 541.8775510204082 264)" x="541.8775510204082" y="264" text-anchor="end">2026-11-17T02-55-10</text>
+<text class="tick" transform="rotate(-40 557.5510204081633 264)" x="557.5510204081633" y="264" text-anchor="end">2026-11-17T02-56-39</text>
+<text class="tick" transform="rotate(-40 573.2244897959183 264)" x="573.2244897959183" y="264" text-anchor="end">2026-11-18T09-33-12</text>
+<text class="tick" transform="rotate(-40 588.8979591836735 264)" x="588.8979591836735" y="264" text-anchor="end">2026-11-18T09-40-03</text>
+<text class="tick" transform="rotate(-40 604.5714285714286 264)" x="604.5714285714286" y="264" text-anchor="end">2026-11-18T09-41-03</text>
+<text class="tick" transform="rotate(-40 620.2448979591837 264)" x="620.2448979591837" y="264" text-anchor="end">2026-11-18T10-30-54</text>
+<text class="tick" transform="rotate(-40 635.9183673469388 264)" x="635.9183673469388" y="264" text-anchor="end">2026-11-18T10-30-54</text>
+<text class="tick" transform="rotate(-40 651.5918367346939 264)" x="651.5918367346939" y="264" text-anchor="end">2026-11-18T10-30-54</text>
+<text class="tick" transform="rotate(-40 667.2653061224489 264)" x="667.2653061224489" y="264" text-anchor="end">2026-11-18T10-30-54</text>
+<text class="tick" transform="rotate(-40 682.9387755102041 264)" x="682.9387755102041" y="264" text-anchor="end">2026-11-18T10-30-54</text>
+<text class="tick" transform="rotate(-40 698.6122448979593 264)" x="698.6122448979593" y="264" text-anchor="end">2026-11-18T10-30-54</text>
+<text class="tick" transform="rotate(-40 714.2857142857142 264)" x="714.2857142857142" y="264" text-anchor="end">2026-11-18T10-30-54</text>
+<text class="tick" transform="rotate(-40 729.9591836734694 264)" x="729.9591836734694" y="264" text-anchor="end">2026-11-18T10-30-54</text>
+<text class="tick" transform="rotate(-40 745.6326530612245 264)" x="745.6326530612245" y="264" text-anchor="end">2026-11-18T10-30-54</text>
+<text class="tick" transform="rotate(-40 761.3061224489796 264)" x="761.3061224489796" y="264" text-anchor="end">2026-11-18T10-37-56</text>
+<text class="tick" transform="rotate(-40 776.9795918367347 264)" x="776.9795918367347" y="264" text-anchor="end">2026-11-18T10-37-56</text>
+<text class="tick" transform="rotate(-40 792.6530612244898 264)" x="792.6530612244898" y="264" text-anchor="end">2026-11-18T10-37-56</text>
+<text class="tick" transform="rotate(-40 808.3265306122448 264)" x="808.3265306122448" y="264" text-anchor="end">2026-11-18T10-37-56</text>
+<text class="tick" transform="rotate(-40 824 264)" x="824" y="264" text-anchor="end">2026-11-18T10-37-56</text>
+<polyline fill="none" stroke="var(--series-1)" stroke-width="2" points="118.7,221.5 134.4,108.9 150.0,222.1 181.4,16.0 416.5,214.2 620.2,245.1"/>
+<circle cx="118.7" cy="221.5" r="4" fill="var(--series-1)"><title>deepseek.v3.2, 2026-11-16T12-31-21: $6.26</title></circle>
+<circle cx="134.4" cy="108.9" r="4" fill="var(--series-1)"><title>deepseek.v3.2, 2026-11-16T12-35-54: $32.80</title></circle>
+<circle cx="150.0" cy="222.1" r="4" fill="var(--series-1)"><title>deepseek.v3.2, 2026-11-16T18-21-32: $6.11</title></circle>
+<circle cx="181.4" cy="16.0" r="4" fill="var(--series-1)"><title>deepseek.v3.2, 2026-11-16T18-26-38: $54.71</title></circle>
+<circle cx="416.5" cy="214.2" r="4" fill="var(--series-1)"><title>deepseek.v3.2, 2026-11-16T20-35-38: $7.98</title></circle>
+<circle cx="620.2" cy="245.1" r="4" fill="var(--series-1)"><title>deepseek.v3.2, 2026-11-18T10-30-54: $0.68</title></circle>
+<polyline fill="none" stroke="var(--series-2)" stroke-width="2" points="56.0,156.5 212.7,237.0 244.1,237.0 259.8,124.4 338.1,246.7 761.3,223.2"/>
+<circle cx="56.0" cy="156.5" r="4" fill="var(--series-2)"><title>eu.anthropic.claude-opus-5-5, 2026-11-16T09-19-53: $21.59</title></circle>
+<circle cx="212.7" cy="237.0" r="4" fill="var(--series-2)"><title>eu.anthropic.claude-opus-5-5, 2026-11-16T18-47-24: $2.60</title></circle>
+<circle cx="244.1" cy="237.0" r="4" fill="var(--series-2)"><title>eu.anthropic.claude-opus-5-5, 2026-11-16T19-00-28: $2.59</title></circle>
+<circle cx="259.8" cy="124.4" r="4" fill="var(--series-2)"><title>eu.anthropic.claude-opus-5-5, 2026-11-16T19-01-24: $29.14</title></circle>
+<circle cx="338.1" cy="246.7" r="4" fill="var(--series-2)"><title>eu.anthropic.claude-opus-5-5, 2026-11-16T19-42-09: $0.30</title></circle>
+<circle cx="761.3" cy="223.2" r="4" fill="var(--series-2)"><title>eu.anthropic.claude-opus-5-5, 2026-11-18T10-37-56: $5.84</title></circle>
+<polyline fill="none" stroke="var(--series-3)" stroke-width="2" points="71.7,154.3 197.1,240.4 635.9,247.1"/>
+<circle cx="71.7" cy="154.3" r="4" fill="var(--series-3)"><title>eu.anthropic.claude-sonnet-5, 2026-11-16T09-25-48: $22.10</title></circle>
+<circle cx="197.1" cy="240.4" r="4" fill="var(--series-3)"><title>eu.anthropic.claude-sonnet-5, 2026-11-16T18-44-42: $1.79</title></circle>
+<circle cx="635.9" cy="247.1" r="4" fill="var(--series-3)"><title>eu.anthropic.claude-sonnet-5, 2026-11-18T10-30-54: $0.21</title></circle>
+<polyline fill="none" stroke="var(--series-4)" stroke-width="2" points="103.0,244.4 385.1,247.6 400.8,247.7"/>
+<circle cx="103.0" cy="244.4" r="4" fill="var(--series-4)"><title>global.anthropic.claude-haiku-4-5-20251001-v1:0, 2026-11-16T12-11-15: $0.85</title></circle>
+<circle cx="385.1" cy="247.6" r="4" fill="var(--series-4)"><title>global.anthropic.claude-haiku-4-5-20251001-v1:0, 2026-11-16T19-43-42: $0.09</title></circle>
+<circle cx="400.8" cy="247.7" r="4" fill="var(--series-4)"><title>global.anthropic.claude-haiku-4-5-20251001-v1:0, 2026-11-16T19-44-32: $0.07</title></circle>
+<polyline fill="none" stroke="var(--series-5)" stroke-width="2" points="526.2,245.6 541.9,236.5 557.6,138.6 651.6,246.8 777.0,226.1"/>
+<circle cx="526.2" cy="245.6" r="4" fill="var(--series-5)"><title>global.moonshotai.kimi-k3.1, 2026-11-17T02-54-39: $0.56</title></circle>
+<circle cx="541.9" cy="236.5" r="4" fill="var(--series-5)"><title>global.moonshotai.kimi-k3.1, 2026-11-17T02-55-10: $2.70</title></circle>
+<circle cx="557.6" cy="138.6" r="4" fill="var(--series-5)"><title>global.moonshotai.kimi-k3.1, 2026-11-17T02-56-39: $25.79</title></circle>
+<circle cx="651.6" cy="246.8" r="4" fill="var(--series-5)"><title>global.moonshotai.kimi-k3.1, 2026-11-18T10-30-54: $0.28</title></circle>
+<circle cx="777.0" cy="226.1" r="4" fill="var(--series-5)"><title>global.moonshotai.kimi-k3.1, 2026-11-18T10-37-56: $5.16</title></circle>
+<polyline fill="none" stroke="var(--series-6)" stroke-width="2" points="228.4,237.0 275.4,237.0 573.2,233.4 588.9,233.3 604.6,151.6 667.3,246.8 792.7,223.8"/>
+<circle cx="228.4" cy="237.0" r="4" fill="var(--series-6)"><title>global.openai.gpt-6-astra, 2026-11-16T19-00-13: $2.58</title></circle>
+<circle cx="275.4" cy="237.0" r="4" fill="var(--series-6)"><title>global.openai.gpt-6-astra, 2026-11-16T19-01-38: $2.59</title></circle>
+<circle cx="573.2" cy="233.4" r="4" fill="var(--series-6)"><title>global.openai.gpt-6-astra, 2026-11-18T09-33-12: $3.44</title></circle>
+<circle cx="588.9" cy="233.3" r="4" fill="var(--series-6)"><title>global.openai.gpt-6-astra, 2026-11-18T09-40-03: $3.46</title></circle>
+<circle cx="604.6" cy="151.6" r="4" fill="var(--series-6)"><title>global.openai.gpt-6-astra, 2026-11-18T09-41-03: $22.74</title></circle>
+<circle cx="667.3" cy="246.8" r="4" fill="var(--series-6)"><title>global.openai.gpt-6-astra, 2026-11-18T10-30-54: $0.29</title></circle>
+<circle cx="792.7" cy="223.8" r="4" fill="var(--series-6)"><title>global.openai.gpt-6-astra, 2026-11-18T10-37-56: $5.71</title></circle>
+<polyline fill="none" stroke="var(--series-7)" stroke-width="2" points="369.5,246.6 682.9,247.4"/>
+<circle cx="369.5" cy="246.6" r="4" fill="var(--series-7)"><title>global.openai.gpt-6-luna, 2026-11-16T19-42-44: $0.34</title></circle>
+<circle cx="682.9" cy="247.4" r="4" fill="var(--series-7)"><title>global.openai.gpt-6-luna, 2026-11-18T10-30-54: $0.13</title></circle>
+<polyline fill="none" stroke="var(--series-8)" stroke-width="2" points="87.3,153.9 291.1,236.9 306.8,130.6 322.4,246.8 353.8,246.8"/>
+<circle cx="87.3" cy="153.9" r="4" fill="var(--series-8)"><title>global.openai.gpt-6-sol, 2026-11-16T09-37-13: $22.18</title></circle>
+<circle cx="291.1" cy="236.9" r="4" fill="var(--series-8)"><title>global.openai.gpt-6-sol, 2026-11-16T19-08-49: $2.62</title></circle>
+<circle cx="306.8" cy="130.6" r="4" fill="var(--series-8)"><title>global.openai.gpt-6-sol, 2026-11-16T19-09-35: $27.68</title></circle>
+<circle cx="322.4" cy="246.8" r="4" fill="var(--series-8)"><title>global.openai.gpt-6-sol, 2026-11-16T19-42-00: $0.29</title></circle>
+<circle cx="353.8" cy="246.8" r="4" fill="var(--series-8)"><title>global.openai.gpt-6-sol, 2026-11-16T19-42-23: $0.29</title></circle>
+<polyline fill="none" stroke="var(--series-1)" stroke-width="2" points="494.9,205.6 698.6,239.5"/>
+<circle cx="494.9" cy="205.6" r="4" fill="var(--series-1)"><title>global.zai.glm-5.3, 2026-11-17T02-47-59: $10.00</title></circle>
+<circle cx="698.6" cy="239.5" r="4" fill="var(--series-1)"><title>global.zai.glm-5.3, 2026-11-18T10-30-54: $2.00</title></circle>
+<polyline fill="none" stroke="var(--series-2)" stroke-width="2" points="165.7,196.9 714.3,238.5"/>
+<circle cx="165.7" cy="196.9" r="4" fill="var(--series-2)"><title>mistral.devstral-2-123b, 2026-11-16T18-25-41: $12.05</title></circle>
+<circle cx="714.3" cy="238.5" r="4" fill="var(--series-2)"><title>mistral.devstral-2-123b, 2026-11-18T10-30-54: $2.25</title></circle>
+<polyline fill="none" stroke="var(--series-3)" stroke-width="2" points="447.8,146.2 510.5,205.6"/>
+<circle cx="447.8" cy="146.2" r="4" fill="var(--series-3)"><title>moonshotai.kimi-k3.1, 2026-11-17T02-27-02: $24.00</title></circle>
+<circle cx="510.5" cy="205.6" r="4" fill="var(--series-3)"><title>moonshotai.kimi-k3.1, 2026-11-17T02-50-40: $10.00</title></circle>
+<polyline fill="none" stroke="var(--series-4)" stroke-width="2" points="730.0,244.0 808.3,173.7"/>
+<circle cx="730.0" cy="244.0" r="4" fill="var(--series-4)"><title>openai.gpt-oss-120b-1:0, 2026-11-18T10-30-54: $0.94</title></circle>
+<circle cx="808.3" cy="173.7" r="4" fill="var(--series-4)"><title>openai.gpt-oss-120b-1:0, 2026-11-18T10-37-56: $17.52</title></circle>
+<polyline fill="none" stroke="var(--series-5)" stroke-width="2" points="432.2,214.7 463.5,204.2 479.2,204.0 745.6,245.4 824.0,155.0"/>
+<circle cx="432.2" cy="214.7" r="4" fill="var(--series-5)"><title>qwen.qwen3-235b-a22b-2507-v1:0, 2026-11-17T02-26-35: $7.85</title></circle>
+<circle cx="463.5" cy="204.2" r="4" fill="var(--series-5)"><title>qwen.qwen3-235b-a22b-2507-v1:0, 2026-11-17T02-39-55: $10.33</title></circle>
+<circle cx="479.2" cy="204.0" r="4" fill="var(--series-5)"><title>qwen.qwen3-235b-a22b-2507-v1:0, 2026-11-17T02-46-19: $10.38</title></circle>
+<circle cx="745.6" cy="245.4" r="4" fill="var(--series-5)"><title>qwen.qwen3-235b-a22b-2507-v1:0, 2026-11-18T10-30-54: $0.60</title></circle>
+<circle cx="824.0" cy="155.0" r="4" fill="var(--series-5)"><title>qwen.qwen3-235b-a22b-2507-v1:0, 2026-11-18T10-37-56: $21.92</title></circle>
 </svg>
 <p class="legend">
-<span class="key"><span class="swatch" style="background: var(--series-1)"></span>claude-haiku-4-5-20251001</span>
-<span class="key"><span class="swatch" style="background: var(--series-2)"></span>claude-opus-5-5</span>
-<span class="key"><span class="swatch" style="background: var(--series-3)"></span>claude-sonnet-5</span>
-<span class="key"><span class="swatch" style="background: var(--series-4)"></span>deepseek.v3.2</span>
-<span class="key"><span class="swatch" style="background: var(--series-5)"></span>global.openai.gpt-6-astra</span>
-<span class="key"><span class="swatch" style="background: var(--series-6)"></span>global.openai.gpt-6-sol</span>
-<span class="key"><span class="swatch" style="background: var(--series-7)"></span>haiku</span>
-<span class="key"><span class="swatch" style="background: var(--series-8)"></span>moonshotai.kimi-k3.1</span>
-<span class="key"><span class="swatch" style="background: var(--series-1)"></span>qwen.qwen3-235b-a22b-2507-v1:0</span>
-<span class="key"><span class="swatch" style="background: var(--series-2)"></span>sonnet</span>
+<span class="key"><span class="swatch" style="background: var(--series-1)"></span>deepseek.v3.2</span>
+<span class="key"><span class="swatch" style="background: var(--series-2)"></span>eu.anthropic.claude-opus-5-5</span>
+<span class="key"><span class="swatch" style="background: var(--series-3)"></span>eu.anthropic.claude-sonnet-5</span>
+<span class="key"><span class="swatch" style="background: var(--series-4)"></span>global.anthropic.claude-haiku-4-5-20251001-v1:0</span>
+<span class="key"><span class="swatch" style="background: var(--series-5)"></span>global.moonshotai.kimi-k3.1</span>
+<span class="key"><span class="swatch" style="background: var(--series-6)"></span>global.openai.gpt-6-astra</span>
+<span class="key"><span class="swatch" style="background: var(--series-7)"></span>global.openai.gpt-6-luna</span>
+<span class="key"><span class="swatch" style="background: var(--series-8)"></span>global.openai.gpt-6-sol</span>
+<span class="key"><span class="swatch" style="background: var(--series-1)"></span>global.zai.glm-5.3</span>
+<span class="key"><span class="swatch" style="background: var(--series-2)"></span>mistral.devstral-2-123b</span>
+<span class="key"><span class="swatch" style="background: var(--series-3)"></span>moonshotai.kimi-k3.1</span>
+<span class="key"><span class="swatch" style="background: var(--series-4)"></span>openai.gpt-oss-120b-1:0</span>
+<span class="key"><span class="swatch" style="background: var(--series-5)"></span>qwen.qwen3-235b-a22b-2507-v1:0</span>
 </p>
 <script>
 for (const table of document.querySelectorAll("table"))

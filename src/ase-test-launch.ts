@@ -101,10 +101,11 @@ const pick = (title: string, items: PickItem[], selectAll: boolean): Promise<num
     confirmation, split off from the options passed through to every runner
     (exported pure, so the splitting is testable offline)  */
 export type LaunchArgs = {
-    tests: string[] | null, models: string[] | null, refModel: string | null, yes: boolean, passThrough: string[]
+    tests: string[] | null, models: string[] | null, refModel: string | null, refFallback: string | null,
+    yes: boolean, passThrough: string[]
 }
 export const parseArgv = (argv: string[]): LaunchArgs => {
-    const result: LaunchArgs = { tests: null, models: null, refModel: null, yes: false, passThrough: [] }
+    const result: LaunchArgs = { tests: null, models: null, refModel: null, refFallback: null, yes: false, passThrough: [] }
     const items = (name: string, value: string | undefined): string[] => {
         const list = (value ?? "").split(",").map((s) => s.trim()).filter((s) => s !== "")
         if (list.length === 0)
@@ -114,12 +115,15 @@ export const parseArgv = (argv: string[]): LaunchArgs => {
     for (let i = 0; i < argv.length; i++) {
         const arg = argv[i]
         const opt = /^(--tests|--models)(?:=(.*))?$/.exec(arg)
-        const ref = /^--ref-model(?:=(.*))?$/.exec(arg)
+        const ref = /^(--ref-model|--ref-fallback)(?:=(.*))?$/.exec(arg)
         if (ref !== null) {
-            const value = ref[1] !== undefined ? ref[1] : argv[++i]
+            const value = ref[2] !== undefined ? ref[2] : argv[++i]
             if ((value ?? "") === "")
-                throw new Error("option --ref-model needs a model id")
-            result.refModel = value
+                throw new Error(`option ${ref[1]} needs a model id`)
+            if (ref[1] === "--ref-model")
+                result.refModel    = value
+            else
+                result.refFallback = value
         }
         else if (opt !== null) {
             const value = opt[2] !== undefined ? opt[2] : argv[++i]
@@ -138,18 +142,45 @@ export const parseArgv = (argv: string[]): LaunchArgs => {
 
 /*  the command line that repeats this exact run (exported pure for testing);
     a glob character gets quoted, so the shell passes it through verbatim  */
-export const repeatLine = (tests: string[], models: string[], refModel: string, passThrough: string[]): string => {
+export const repeatLine = (tests: string[], models: string[], refModel: string, refFallback: string,
+    passThrough: string[]): string => {
     const quote = (s: string) => /^[A-Za-z0-9._,=/@:-]+$/.test(s) ? s : `'${s.replace(/'/g, "'\\''")}'`
     return [ "./launch_tests.sh",
-        "--tests",     quote(tests.join(",")),
-        "--models",    quote(models.join(",")),
-        "--ref-model", quote(refModel),
+        "--tests",        quote(tests.join(",")),
+        "--models",       quote(models.join(",")),
+        "--ref-model",    quote(refModel),
+        "--ref-fallback", quote(refFallback),
         "--yes", ...passThrough.map(quote) ].join(" ")
 }
 
 /*  the default reference model of the judge and the simulator, which stay fixed
     across all tested models, so no model grades itself or plays its own user  */
-const REF_MODEL_DEFAULT = "eu.anthropic.claude-opus-5-5"
+const REF_MODEL_DEFAULT    = "eu.anthropic.claude-opus-5-5"
+const REF_FALLBACK_DEFAULT = "eu.anthropic.claude-sonnet-5"
+
+/*  cut a line to <width> visible characters, keeping its ANSI color sequences
+    intact and resetting the colors after a cut (exported pure for testing; the
+    matcher is built without a control-character regex literal)  */
+const ansiAt = new RegExp(`^${String.fromCharCode(0x1b)}\\[[0-9;]*m`)
+export const truncate = (line: string, width: number): string => {
+    let out     = ""
+    let visible = 0
+    for (let i = 0; i < line.length;) {
+        const seq = ansiAt.exec(line.slice(i))
+        if (seq !== null) {
+            out += seq[0]
+            i   += seq[0].length
+            continue
+        }
+        const char = String.fromCodePoint(line.codePointAt(i)!)
+        if (visible >= width)
+            return `${out}\x1b[0m`
+        out     += char
+        visible += 1
+        i       += char.length
+    }
+    return out
+}
 
 /*  fetch the available models from the agent tool via the "initialize"
     control request of its stream-json interface  */
@@ -264,11 +295,12 @@ const main = async (): Promise<void> => {
     }
 
     /*  step 3: confirm the matrix, as every run burns real tokens  */
-    const refModel = opts.refModel ?? process.env.ASE_TEST_REF_MODEL ?? REF_MODEL_DEFAULT
+    const refModel    = opts.refModel ?? process.env.ASE_TEST_REF_MODEL ?? REF_MODEL_DEFAULT
+    const refFallback = opts.refFallback ?? process.env.ASE_TEST_REF_FALLBACK ?? REF_FALLBACK_DEFAULT
     const runsPerModel = selectedCases.reduce((sum, caze) => sum + caze.runs, 0)
     console.log(`\n${selectedCases.length} test(s) x ${models.length} model(s), ` +
         `${runsPerModel} run(s) per model, ${runsPerModel * models.length} run(s) in total, ` +
-        `judge and simulator: ${refModel}.`)
+        `judge and simulator: ${refModel} (fallback: ${refFallback}).`)
     console.log(chalk.yellow("WARNING: every run burns real tokens and costs actual money."))
     if (!opts.yes) {
         const answer = await new Promise<string>((resolve) => {
@@ -286,7 +318,8 @@ const main = async (): Promise<void> => {
     const runners: Runner[] = []
     const children: Promise<void>[] = []
     const childProcs: ReturnType<typeof execa>[] = []
-    for (const model of models) {
+    const outageFile = path.join(harnessRoot, "results", `.outage-${timestamp}`)
+    for (const [ index, model ] of models.entries()) {
         const slug       = model.replace(/[^A-Za-z0-9._-]+/g, "-")
         const resultsDir = path.join(harnessRoot, "results", `${timestamp}-${slug}`)
         fs.mkdirSync(resultsDir, { recursive: true })
@@ -306,6 +339,13 @@ const main = async (): Promise<void> => {
             env[name] = model
         for (const name of [ "ASE_TEST_JUDGE_MODEL", "ASE_TEST_SIM_MODEL", "ASE_TEST_SIM_FORCE" ])
             env[name] = refModel
+        env.ASE_TEST_REF_FALLBACK = refFallback
+
+        /*  all runners share one gateway outage state, and they start staggered,
+            so the batch does not open all its sessions at the same instant  */
+        env.ASE_TEST_OUTAGE_FILE = outageFile
+        if (env.ASE_TEST_START_DELAY === undefined)
+            env.ASE_TEST_START_DELAY = String(index * 20)
 
         /*  gateway models get no prompt caching and are slower, so their budgets
             and timeouts are scaled up  */
@@ -341,18 +381,33 @@ const main = async (): Promise<void> => {
         children.push(child.then(({ exitCode }) => {
             runner.exitCode = exitCode ?? 1
             log.end()
-            draw()
+            draw(true)
         }))
     }
 
-    /*  step 5: progress visualization (one line per model, redrawn in place)  */
-    let lines = 0
-    const draw = (): void => {
-        if (lines > 0)
-            process.stdout.write(`\x1b[${lines}A\x1b[J`)
-        const out = runners.map((runner) => runnerLine(runner))
-        process.stdout.write(out.join("\n") + "\n")
+    /*  step 5: progress visualization (one line per model, redrawn in place):
+        throttled to 5 redraws per second, every line cut to the terminal width
+        (a wrapped line would break the cursor-up count), each line overwritten
+        instead of the whole block erased first, and the whole redraw written at
+        once as a synchronized update (ignored by terminals without support)  */
+    let lines   = 0
+    let pending: ReturnType<typeof setTimeout> | null = null
+    const render = (): void => {
+        pending = null
+        const width = Math.max(20, (process.stdout.columns ?? 120) - 1)
+        const out   = runners.map((runner) => truncate(runnerLine(runner), width))
+        process.stdout.write("\x1b[?2026h" + (lines > 0 ? `\x1b[${lines}A` : "") +
+            out.map((line) => `\r\x1b[2K${line}`).join("\n") + "\n\x1b[?2026l")
         lines = out.length
+    }
+    const draw = (now = false): void => {
+        if (now) {
+            if (pending !== null)
+                clearTimeout(pending)
+            render()
+        }
+        else if (pending === null)
+            pending = setTimeout(render, 200)
     }
     /*  an interrupt from the terminal reaches the runners directly (same process
         group), so the launcher only waits for their teardown, while a targeted
@@ -363,8 +418,10 @@ const main = async (): Promise<void> => {
             child.kill("SIGTERM")
     })
     console.log("")
-    draw()
+    draw(true)
     await Promise.all(children)
+    draw(true)
+    fs.rmSync(outageFile, { force: true })
 
     /*  step 6: refresh the comparison report over all results  */
     console.log("")
@@ -394,7 +451,7 @@ const main = async (): Promise<void> => {
     }
 
     /*  one copyable command line that repeats this exact run  */
-    console.log(chalk.dim(`repeat: ${repeatLine(globs, models, refModel, opts.passThrough)}`))
+    console.log(chalk.dim(`repeat: ${repeatLine(globs, models, refModel, refFallback, opts.passThrough)}`))
     process.exit(worst)
 }
 

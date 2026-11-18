@@ -127,7 +127,7 @@ const describeOracle = (caze: TestCase, oracle: OracleSpec): string[] => {
         lines.push(`    - ${oracle.review.in} is a review whose findings, matched by file and line against ` +
             `"${path.relative(caze.dir, oracle.review.expected)}", meet the thresholds of ` +
             `"${path.relative(caze.dir, oracle.review.thresholds)}" (${limits.join(", ")}), ` +
-            "and no tool call accessed the benchmark or the ASE repository outside \"plugin/\" and \"tool/\"")
+            "and no tool call accessed the benchmark or the ASE repository outside \"plugin/\", \"tool/\", and \"node_modules/\"")
     }
     return lines
 }

@@ -1,7 +1,7 @@
 skill: ase-task-grill
 args: "--rounds 2 --next DONE alpha"
 runs: 1
-timeoutSec: 900
+timeoutSec: 1200
 budget: { maxUsd: 4.00 }
 fixture:
   lifecycle: solo

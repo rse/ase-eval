@@ -16,6 +16,7 @@ import type { Simulator, DialogEntry, Question } from "./ase-test-simulator.js"
 import { SimulatorError }            from "./ase-test-simulator.js"
 import { pricingCost, pricingCallCost, pricingBudgetScale } from "./ase-test-pricing.js"
 import type { CostBasis, ModelUsage } from "./ase-test-pricing.js"
+import { GATEWAY_FAILURE }           from "./ase-test-report.js"
 
 /*  the abort controllers of all live sessions, so an interrupt of the
     harness can abort them all and still tear down their sandboxes  */
@@ -37,7 +38,9 @@ export type SessionRecord = {
     "mcpFailed" flags a session whose ASE MCP server never connected,
     "stalled" one aborted by the watchdog after a too long silence, "simFailed"
     one whose simulator failed, "budgetHit" one aborted by the table-priced
-    budget watchdog, and "costBasis" tells how "costUsd" was priced)  */
+    budget watchdog, "apiFlaky" the first gateway or server error seen inside
+    the session (e.g. a sub-agent hit by an HTTP 503), and "costBasis" tells
+    how "costUsd" was priced)  */
 export type SessionResult = {
     messages:     Record<string, any>[]
     output:       string[]
@@ -58,6 +61,7 @@ export type SessionResult = {
     mcpFailed:    boolean
     simFailed:    boolean
     budgetHit:    boolean
+    apiFlaky:     string
     costBasis:    CostBasis
 }
 
@@ -78,7 +82,7 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
     const result: SessionResult = {
         messages: [], output: [], lastText: "", dialog: [], sessionId: "", model: "",
         costUsd: 0, costAccurate: true, turns: 0, errored: false, crashed: false, timedOut: false, stalled: false, failure: "",
-        stopReason: "", apiStatus: null, mcpFailed: false, simFailed: false, budgetHit: false, costBasis: "sdk"
+        stopReason: "", apiStatus: null, mcpFailed: false, simFailed: false, budgetHit: false, apiFlaky: "", costBasis: "sdk"
     }
     const prompt = stage.skill !== "" ? skillPrompt(stage.skill, stage.args) : stage.prompt
 
@@ -134,6 +138,12 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         where it is disarmed while the simulator composes an answer  */
     const stallSec = Number(process.env.ASE_TEST_STALL_SEC ?? "120")
     let stallTimer: ReturnType<typeof setTimeout> | null = null
+
+    /*  the thinking progress since the last re-arm of the stall watchdog: a stream
+        trickling a few thinking tokens (or only "ping" events) for minutes is as
+        stuck as a silent one, so only a real progress re-arms the watchdog  */
+    const stallMinTokens   = Number(process.env.ASE_TEST_STALL_MIN_TOKENS ?? "50")
+    let   thinkingSinceArm = 0
     const stallDisarm = () => {
         if (stallTimer !== null)
             clearTimeout(stallTimer)
@@ -141,6 +151,7 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
     }
     const stallArm = () => {
         stallDisarm()
+        thinkingSinceArm = 0
         if (!Number.isFinite(stallSec) || stallSec <= 0)
             return
         stallTimer = setTimeout(() => {
@@ -149,6 +160,28 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
             result.stalled = true
             abort.abort()
         }, stallSec * 1000)
+    }
+
+    /*  whether a session message proves progress: any regular message, any stream
+        event except a keep-alive "ping" and a thinking delta, and thinking (deltas
+        resp. "thinking_tokens" estimates) only once it adds up to "stallMinTokens"  */
+    const progress = (msg: Record<string, any>): boolean => {
+        let tokens: number
+        if (msg.type === "stream_event") {
+            const event = msg.event ?? {}
+            if (event.type === "ping")
+                return false
+            if (event.type === "content_block_delta" && event.delta?.type === "thinking_delta")
+                tokens = Math.ceil(String(event.delta.thinking ?? "").length / 4)
+            else
+                return true
+        }
+        else if (msg.type === "system" && msg.subtype === "thinking_tokens")
+            tokens = Number(msg.estimated_tokens_delta ?? 1)
+        else
+            return true
+        thinkingSinceArm += tokens
+        return thinkingSinceArm >= stallMinTokens
     }
 
     /*  run a simulator step with both the deadline and the stall watchdog paused,
@@ -261,7 +294,8 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         const session = query({ prompt: input(), options })
         stallArm()
         for await (const msg of session) {
-            stallArm()
+            if (progress(msg as Record<string, any>))
+                stallArm()
 
             /*  the streamed partial messages only prove the session alive  */
             if (msg.type === "stream_event")
@@ -285,6 +319,9 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
                         const text = typeof block.content === "string" ? block.content : JSON.stringify(block.content ?? "")
                         if (/failed to connect/.test(text) && /plugin:ase:ase/.test(text))
                             result.mcpFailed = true
+                        const flaky = GATEWAY_FAILURE.exec(text)
+                        if (flaky !== null && result.apiFlaky === "")
+                            result.apiFlaky = flaky[0]
                     }
             }
             else if (msg.type === "assistant") {
@@ -292,6 +329,9 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
                 const blocks = Array.isArray(msg.message?.content) ? msg.message.content : []
                 for (const block of blocks)
                     if (block.type === "text" && block.text.trim() !== "") {
+                        const flaky = GATEWAY_FAILURE.exec(block.text)
+                        if (flaky !== null && result.apiFlaky === "")
+                            result.apiFlaky = flaky[0]
                         result.output.push(...block.text.split("\n"))
                         result.lastText = block.text
                         result.dialog.push({ role: "assistant", text: block.text })

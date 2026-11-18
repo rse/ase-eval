@@ -17,5 +17,7 @@ oracles:
         - "alpha"
         - "beta"
       not:
-        - "gamma"
+        #   a table row only, as a model leaking its reasoning ("drop gamma")
+        #   into the visible text still listed the right tasks
+        - "\\|\\s*\\*\\*gamma\\*\\*\\s*\\|"
   - taskStore: { count: 3 }

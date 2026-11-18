@@ -24,8 +24,8 @@ import type { StageOutcome }               from "./ase-test-transcript.js"
 import { oraclesRun, changesetDiff, skillSpoke } from "./ase-test-oracle.js"
 import type { OracleResult }               from "./ase-test-oracle.js"
 import { describeCase }                    from "./ase-test-describe.js"
-import { reportRun, reportStage, reportSummary, summaryWrite, caseAggregate } from "./ase-test-report.js"
-import type { RunOutcome, CaseOutcome }    from "./ase-test-report.js"
+import { reportRun, reportStage, reportSummary, summaryWrite, caseAggregate, GATEWAY_FAILURE } from "./ase-test-report.js"
+import type { RunOutcome, CaseOutcome, InfraKind } from "./ase-test-report.js"
 import { llmSpend }                        from "./ase-test-llm.js"
 import { pricingRate }                     from "./ase-test-pricing.js"
 import type { CostBasis }                  from "./ase-test-pricing.js"
@@ -219,6 +219,64 @@ const bookCost = (result: SessionResult, maxUsd: number): number => {
     make the workers back off before scheduling further runs  */
 let infraStreak = 0
 
+/*  an interruptible pause, which ends early once the scheduling was aborted  */
+const pause = async (ms: number): Promise<void> => {
+    const end = Date.now() + ms
+    for (let left = ms; left > 0; left = end - Date.now()) {
+        if (aborted !== "")
+            break
+        await new Promise<void>((resolve) => setTimeout(resolve, Math.min(1000, left)))
+    }
+}
+
+/*  the gateway outage state, shared through a file by all runners of a launcher
+    (and else private to this runner): a gateway error pauses every worker of every
+    runner until "until" (60 s doubling per consecutive outage up to 300 s, plus a
+    jitter, so not all workers hit the recovering gateway at once), and an ordinary
+    run resets the streak  */
+type Outage = { until: number, streak: number }
+const outageFile   = process.env.ASE_TEST_OUTAGE_FILE ?? path.join(resultsDir, ".outage")
+const outageShared = process.env.ASE_TEST_OUTAGE_FILE !== undefined
+const outageRead = (): Outage => {
+    try {
+        const data = JSON.parse(fs.readFileSync(outageFile, "utf8")) as Partial<Outage>
+        return { until: Number(data.until ?? 0), streak: Number(data.streak ?? 0) }
+    }
+    catch (_err) {
+        return { until: 0, streak: 0 }
+    }
+}
+const outageWrite = (outage: Outage): void => {
+    fs.mkdirSync(path.dirname(outageFile), { recursive: true })
+    const tmp = `${outageFile}.${process.pid}.tmp`
+    fs.writeFileSync(tmp, JSON.stringify(outage), "utf8")
+    fs.renameSync(tmp, outageFile)
+}
+const outageMark = (): void => {
+    const now    = Date.now()
+    const prev   = outageRead()
+    if (prev.until > now)
+        return
+    const streak = prev.streak + 1
+    const ms     = Math.min(60 * 2 ** (streak - 1), 300) * 1000 + Math.random() * 10 * 1000
+    outageWrite({ until: now + ms, streak })
+    console.log(chalk.yellow(`⏸ gateway outage (#${streak}) -- pausing all workers ${Math.round(ms / 1000)}s`))
+}
+const outageReset = (): void => {
+    const prev = outageRead()
+    if (prev.streak > 0 && prev.until <= Date.now())
+        outageWrite({ until: 0, streak: 0 })
+}
+const outageWait = async (): Promise<void> => {
+    const ms = outageRead().until - Date.now()
+    if (ms > 0)
+        await pause(ms)
+}
+
+/*  the number of "ase_task_save" calls of one session beyond which it is
+    considered a save loop (diagnostic only)  */
+const SAVE_LOOP_MAX = 5
+
 /*  execute one attempt of one run of a case, containing every failure (a throw
     escaping here would reject the whole worker pool and lose all results)  */
 const executeAttempt = async (caze: TestCase, run: number, retried: boolean):
@@ -226,7 +284,7 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
     const started = Date.now()
     const outcome: RunOutcome = {
         run, outcome: "fail", costUsd: 0, bookedUsd: 0, costBasis: "", durationMs: 0,
-        failure: "", artifacts: "", model: "", oracles: []
+        failure: "", infraKind: "", artifacts: "", model: "", oracles: []
     }
     let retry   = false
     let sandbox: Sandbox | null = null
@@ -312,6 +370,7 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
             stalled:      last.stalled,
             simFailed:    last.simFailed,
             budgetHit:    last.budgetHit,
+            apiFlaky:     results.map((r) => r.apiFlaky).find((text) => text !== "") ?? "",
             costBasis:    ([ "unpriced", "table", "sdk" ] as CostBasis[])
                 .find((basis) => results.some((r) => r.costBasis === basis)) ?? "sdk"
         }
@@ -339,6 +398,8 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
             outcome.outcome = "error"
             outcome.failure = result.mcpFailed && result.failure === "" ?
                 "MCP server plugin:ase:ase failed to connect" : result.failure
+            outcome.infraKind = GATEWAY_FAILURE.test(outcome.failure) ? "gateway" :
+                result.mcpFailed ? "mcp" : last.simFailed ? "sim" : last.stalled ? "stall" : api ? "api" : "crash"
             outcome.oracles = diagnostics
             retry = !retried && (!api || last.apiStatus === 429 || last.apiStatus! >= 500)
             await transcriptFinish(transcript, caze, sandbox, result, "", diagnostics, false, stages)
@@ -364,7 +425,9 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
                         oracles = await oraclesRun(caze.oracles, caze, sandbox, result, diff)
                     }
                     catch (err) {
-                        if (attempt >= 3)
+                        /*  a safeguard refusal is deterministic for the prompt (the
+                            fallback reference model was already tried), so retrying is futile  */
+                        if (attempt >= 3 || /safeguards flagged/.test(err instanceof Error ? err.message : String(err)))
                             throw err
                         console.log(chalk.yellow(`⚠ ${label}: evaluation failed ` +
                             `(${err instanceof Error ? err.message : String(err)}) -- retrying the oracles`))
@@ -387,6 +450,18 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
                             detail: `skill re-invoked itself ${reruns} time(s)`
                         })
                 }
+
+                /*  a session saving a task plan again and again (e.g. after refusals)
+                    runs into a save loop, which is diagnostic only  */
+                const saves = result.messages
+                    .filter((msg) => msg.type === "assistant")
+                    .flatMap((msg) => ((msg.message?.content ?? []) as { type: string, name?: string }[]))
+                    .filter((block) => block.type === "tool_use" && /ase_task_save$/.test(block.name ?? "")).length
+                if (saves > SAVE_LOOP_MAX)
+                    outcome.oracles.push({
+                        kind: "saveLoop", pass: false, diagnostic: true,
+                        detail: `"ase_task_save" called ${saves} times (more than ${SAVE_LOOP_MAX})`
+                    })
                 for (const [ index, r ] of results.entries())
                     if (r.costUsd > caze.stages[index].maxUsd)
                         outcome.oracles.push({
@@ -397,21 +472,33 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
                 outcome.outcome = outcome.oracles.every((oracle) => oracle.pass || oracle.diagnostic === true) ?
                     "pass" : "fail"
                 outcome.failure = result.failure
+
+                /*  a failed run whose session saw a gateway or server error (e.g. a
+                    sub-agent hit by an HTTP 503) says nothing about the model, so it is
+                    an infrastructure error and retried, while a passed run stays passed  */
+                if (outcome.outcome === "fail" && result.apiFlaky !== "") {
+                    outcome.outcome   = "error"
+                    outcome.infraKind = "api"
+                    outcome.failure   = `API error inside the session: ${result.apiFlaky}`
+                    retry             = !retried
+                }
                 await transcriptFinish(transcript, caze, sandbox, result, diff,
                     outcome.oracles, outcome.outcome === "pass", stages)
             }
             catch (err) {
-                outcome.outcome = "error"
-                outcome.failure = `evaluation failed: ${err instanceof Error ? err.message : String(err)}`
-                outcome.oracles = diagnostics
+                outcome.outcome   = "error"
+                outcome.failure   = `evaluation failed: ${err instanceof Error ? err.message : String(err)}`
+                outcome.infraKind = GATEWAY_FAILURE.test(outcome.failure) ? "gateway" : "eval"
+                outcome.oracles   = diagnostics
                 await transcriptFinish(transcript, caze, sandbox, result, diff, diagnostics, false, stages)
                     .catch(() => { /*  keep the evaluation failure as the reported cause  */ })
             }
         }
     }
     catch (err) {
-        outcome.outcome = "error"
-        outcome.failure = err instanceof Error ? err.message : String(err)
+        outcome.outcome   = "error"
+        outcome.failure   = err instanceof Error ? err.message : String(err)
+        outcome.infraKind = GATEWAY_FAILURE.test(outcome.failure) ? "gateway" : "crash"
         retry = !retried
     }
     finally {
@@ -436,12 +523,31 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
 /*  execute one run of a case, where an infrastructure error gets one retry in its
     own artifact directory, started only after the first attempt is fully torn down
     and only while the global ceiling still allows it  */
+const outageNote = (outcome: RunOutcome): void => {
+    if (outcome.infraKind === "gateway")
+        outageMark()
+    else if (outcome.outcome !== "error" && outcome.outcome !== "skipped")
+        outageReset()
+}
 const executeRun = async (caze: TestCase, run: number): Promise<RunOutcome> => {
+    await outageWait()
     const first = await executeAttempt(caze, run, false)
+    outageNote(first.outcome)
     if (!first.retry || aborted !== "" || spentUsd() > ceilingUsd)
         return first.outcome
-    console.log(chalk.yellow(`⚠ ${caze.name} run ${run}: ${first.outcome.failure} -- retrying once`))
+
+    /*  a transient error is retried only after a delay (at least 30 s plus a
+        jitter, resp. the end of a gateway outage pause), never immediately  */
+    const delay = ([ "gateway", "api", "sim" ] as InfraKind[]).includes(first.outcome.infraKind) ?
+        30 * 1000 + Math.random() * 15 * 1000 : 0
+    console.log(chalk.yellow(`⚠ ${caze.name} run ${run}: ${first.outcome.failure} -- retrying once` +
+        (delay > 0 ? ` (in ≥${Math.round(delay / 1000)}s)` : "")))
+    await pause(delay)
+    await outageWait()
+    if (aborted !== "")
+        return first.outcome
     const second = await executeAttempt(caze, run, true)
+    outageNote(second.outcome)
 
     /*  carry the first attempt's spend into the reported outcome (the per-run costs
         report the measured spend, a lower bound after a timeout or crash, while the
@@ -467,6 +573,8 @@ const meta = {
     model:        process.env.ASE_TEST_MODEL ?? "(account default)",
     judgeModel:   process.env.ASE_TEST_JUDGE_MODEL ?? "claude-haiku-5-5",
     simModel:     process.env.ASE_TEST_SIM_FORCE ?? "(per case)",
+    refFallback:  process.env.ASE_TEST_REF_FALLBACK ?? "",
+    refFallbacks: "0",
     pluginCommit,
     pluginVersion,
     toolBuilt:    toolBuilt.toISOString(),
@@ -493,7 +601,7 @@ for (let run = 1; run <= rounds; run++)
     outcome yet (still running or never scheduled) counts as skipped  */
 const pendingOutcome = (run: number, why: string): RunOutcome => ({
     run, outcome: "skipped", costUsd: 0, bookedUsd: 0, costBasis: "", durationMs: 0,
-    failure: `skipped (${why})`, artifacts: "", model: "", oracles: []
+    failure: `skipped (${why})`, infraKind: "", artifacts: "", model: "", oracles: []
 })
 const aggregate = (why: string): CaseOutcome[] => cases.map((caze) => {
     const runs = work.filter((item) => item.caze === caze)
@@ -530,8 +638,17 @@ for (const stream of [ process.stdout, process.stderr ])
             throw err
     })
 
+/*  the staggered start: the whole pool waits "$ASE_TEST_START_DELAY" seconds (set
+    per runner by the launcher), and worker i "i * $ASE_TEST_STAGGER_SEC" seconds
+    more, so a batch does not open all its sessions at the same instant  */
+const startDelaySec = Number(process.env.ASE_TEST_START_DELAY ?? "0")
+const staggerSec    = Number(process.env.ASE_TEST_STAGGER_SEC ?? "10")
 let next = 0
-const worker = async (): Promise<void> => {
+const worker = async (index: number): Promise<void> => {
+    const delay = (Number.isFinite(startDelaySec) ? startDelaySec : 0) +
+        index * (Number.isFinite(staggerSec) ? staggerSec : 0)
+    if (delay > 0)
+        await pause(delay * 1000)
     while (next < work.length) {
         const item = work[next++]
         if (aborted !== "") {
@@ -544,13 +661,15 @@ const worker = async (): Promise<void> => {
             await new Promise<void>((resolve) => setTimeout(resolve, pauseSec * 1000))
         }
         item.outcome = await executeRun(item.caze, item.run)
-        reportRun(item.caze.name, item.outcome, item.caze.failHint)
-        infraStreak = item.outcome.outcome === "error" ? infraStreak + 1 : 0
+        infraStreak = item.outcome.outcome === "error" && item.outcome.infraKind !== "gateway" ? infraStreak + 1 : 0
         if (spentUsd() > ceilingUsd && aborted === "")
             aborted = `cost ceiling $${ceilingUsd.toFixed(2)} exceeded`
 
-        /*  the incremental summary, so even a killed harness leaves a partial one  */
+        /*  the incremental summary (before the console report, so even a failing
+            console write or a killed harness leaves the finished run behind)  */
+        meta.refFallbacks = String(llmSpend.fallbacks)
         summaryWrite(resultsDir, aggregate("not yet run"), spentUsd(), llmSpend.usd, aborted !== "" ? aborted : "incomplete", meta)
+        reportRun(item.caze.name, item.outcome, item.caze.failHint)
     }
 }
 console.log(`running ${work.length} run(s) of ${cases.length} case(s) ` +
@@ -558,9 +677,12 @@ console.log(`running ${work.length} run(s) of ${cases.length} case(s) ` +
         (timeFactor !== 1 ? `, time factor: ${timeFactor}` : "") +
         (process.env.ANTHROPIC_BASE_URL !== undefined ? `, endpoint: ${process.env.ANTHROPIC_BASE_URL}` : "") +
         `, results: ${resultsDir})`))
-await Promise.all(Array.from({ length: Math.min(jobs, work.length) }, () => worker()))
+await Promise.all(Array.from({ length: Math.min(jobs, work.length) }, (_v, index) => worker(index)))
+if (!outageShared)
+    fs.rmSync(outageFile, { force: true })
 
 /*  aggregate the outcomes per case (pass@k) and report  */
 const outcomes = aggregate(aborted !== "" ? aborted : "not run")
+meta.refFallbacks = String(llmSpend.fallbacks)
 const exitCode = reportSummary(resultsDir, outcomes, spentUsd(), llmSpend.usd, aborted, meta)
 process.exit(sessionInterrupt.on ? 130 : exitCode)

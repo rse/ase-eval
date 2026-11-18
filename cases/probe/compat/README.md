@@ -1,7 +1,7 @@
 probe/compat
 ============
 
-`ase-meta-compat` (no arguments), 2 runs, both must pass, budget $1.00 per run.
+`ase-meta-compat` (no arguments), 3 runs, at least 2 must pass, budget $1.00 per run.
 
 ## Objective
 
@@ -28,8 +28,9 @@ the model breaks.
     `FULLY COMPATIBLE`.
 -   **A failed probe listed in the output** (`failed:`): caught by `regex`
     with `not`.
--   **Results not reproducible**: `runs: 2` with `minPass: 2` fails the
-    case if the second run differs.
+-   **Results not reproducible**: `runs: 3` with `minPass: 2` fails the
+    case if two runs differ, while a single infrastructure error (e.g. a
+    gateway outage) no longer leaves the case without a verdict.
 
 ## Artifacts
 

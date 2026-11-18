@@ -19,5 +19,6 @@ oracles:
     - notErrored: true
     - gitDiff: { empty: true }
     - review:
+          in:         output
           expected:   solution/expected.json
           thresholds: thresholds.json

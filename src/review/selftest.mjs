@@ -312,6 +312,14 @@ check("isolation: unconnected ASE MCP server is detected", checkInit({ plugins: 
     const use = (input) => ({ type: "assistant", message: { content: [ { type: "tool_use", name: "Read", input } ] } })
     check("contamination: access to the expected-results list is detected", checkContamination([ use({ file_path: "../../solution/expected.json" }) ]).length > 0)
     check("contamination: a relative path inside the copy is fine", checkContamination([ use({ file_path: "src/cart.ts" }) ]).length === 0)
+    const bash = (command) => ({ type: "assistant", message: { content: [ { type: "tool_use", name: "Bash", input: { command } } ] } })
+    check("contamination: a look into a node_modules/ directory of the repository is fine",
+        checkContamination([ bash(`ls ${path.join(REPO_DIR, "node_modules", "typescript", "lib")}`) ]).length === 0
+        && checkContamination([ bash(`ls ${path.join(REPO_DIR, "node_modules", "typescript")}`) ], conditionSpec("baseline")).length === 0)
+    check("contamination: node_modules/ does not excuse another repository path in the same call",
+        checkContamination([ bash(`ls ${path.join(REPO_DIR, "node_modules")} ${path.join(REPO_DIR, "README.md")}`) ]).length > 0
+        && checkContamination([ bash(`grep -r x ${REPO_DIR}`) ]).length > 0
+        && checkContamination([ bash(`ls ${path.join(REPO_DIR, "ase-eval", "cases", "review")}`) ]).length > 0)
     /*  the skill harness (src/ase-test-review.ts) calls the check with the events only,
         and has to get the result of the condition with ASE  */
     const calls = [ "../../solution/expected.json", "src/cart.ts",

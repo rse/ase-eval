@@ -12,6 +12,15 @@ import prettyMs  from "pretty-ms"
 
 import type { OracleResult } from "./ase-test-oracle.js"
 
+/*  the kind of an infrastructure error ("" for none): a gateway outage or server
+    error, an API refusal or a sub-agent API error, an unconnected MCP server, a
+    failed simulator, a stalled session, a failed evaluation, or a plain crash  */
+export type InfraKind = "gateway" | "api" | "mcp" | "sim" | "stall" | "eval" | "crash" | ""
+
+/*  the failure texts of a gateway outage resp. a transient server error  */
+export const GATEWAY_FAILURE =
+    /Couldn't load settings from Cloud gateway|API Error: (?:5\d\d|529)\b|Service Temporarily Unavailable|overloaded_error/
+
 /*  the outcome of one run of a case  */
 export type RunOutcome = {
     run:        number
@@ -21,6 +30,7 @@ export type RunOutcome = {
     costBasis:  string
     durationMs: number
     failure:    string
+    infraKind:  InfraKind
     artifacts:  string
     model:      string
     oracles:    OracleResult[]
@@ -93,7 +103,7 @@ export const reportRun = (name: string, outcome: RunOutcome, failHint = ""): voi
         && !outcome.oracles.some((oracle) => !oracle.pass && oracle.diagnostic !== true))
         console.log(`    ${chalk.red("✘ evaluation")}: ${outcome.failure}`)
     if (outcome.outcome === "error")
-        console.log(`    ${chalk.red("⚠ infra")}: ${outcome.failure}`)
+        console.log(`    ${chalk.red(`⚠ infra${outcome.infraKind !== "" ? ` (${outcome.infraKind})` : ""}`)}: ${outcome.failure}`)
     if (outcome.outcome !== "pass" && outcome.outcome !== "skipped" && failHint !== "")
         console.log(`    ${chalk.cyan("↪ hint")}: ${failHint}`)
     if (outcome.outcome !== "pass" && outcome.artifacts !== "")
@@ -122,6 +132,7 @@ export const summaryWrite = (resultsDir: string, cases: CaseOutcome[],
                 costBasis:  run.costBasis,
                 durationMs: run.durationMs,
                 failure:    run.failure,
+                infraKind:  run.infraKind,
                 artifacts:  run.artifacts,
                 model:      run.model,
                 oracles:    run.oracles
@@ -150,9 +161,11 @@ export const reportSummary = (resultsDir: string, cases: CaseOutcome[],
     const incomplete = cases.filter((caze) => caze.incomplete).length
     const failed     = cases.length - passed - incomplete
     const errored    = cases.some((caze) => caze.runs.some((run) => run.outcome === "error" || run.outcome === "skipped"))
+    const unpriced   = cases.reduce((sum, caze) => sum + caze.runs.filter((run) => run.costBasis === "unpriced").length, 0)
     console.log("")
     console.log(`${passed}/${cases.length} cases passed, ${failed} failed, ${incomplete} incomplete, ` +
         `total cost: $${totalUsd.toFixed(2)} (incl. $${sideUsd.toFixed(2)} simulator/judge)` +
+        (unpriced > 0 ? chalk.yellow(` (${unpriced} run(s) unpriced: costs are fallback estimates)`) : "") +
         `${aborted !== "" ? chalk.red(` (aborted: ${aborted})`) : ""}`)
     summaryWrite(resultsDir, cases, totalUsd, sideUsd, aborted, meta)
     console.log(chalk.dim(`summary: ${path.join(resultsDir, "summary.json")}`))

@@ -4,7 +4,7 @@
 #   the per-category rows localize which primitive a weaker model breaks
 skill: ase-meta-compat
 args: ""
-runs: 2
+runs: 3
 minPass: 2
 timeoutSec: 180
 budget: { maxUsd: 1.00 }

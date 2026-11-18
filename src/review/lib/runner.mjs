@@ -301,6 +301,14 @@ function toolStrings (input) {
 
 /*  contamination check of all tool calls: any access to the benchmark itself or to the ASE
     repository outside the paths the condition legitimately uses (none for the baseline)  */
+/*  whether a (normalized) tool string touches the repository only below a
+    "node_modules/" directory (e.g. looking for a TypeScript compiler), which
+    holds third-party packages and no benchmark answers  */
+const inNodeModules = (n, repo) => {
+    const rest = n.split(repo).slice(1)
+    return rest.length > 0 && rest.every((tail) => /^\/(?:[^\s"']*\/)?node_modules\//.test(tail))
+}
+
 export function checkContamination (events, spec = conditionSpec()) {
     const problems = []
     /*  normalize Windows and Git Bash forms ("C:\x", "C:/x", "/c/x") to "c:/x"  */
@@ -319,7 +327,7 @@ export function checkContamination (events, spec = conditionSpec()) {
                 const n = norm(s)
                 if (/sollliste|cases\/review|src\/review|solution\//.test(n) || bench.some((b) => n.includes(b)))
                     problems.push(`${block.name}: access to ${s}`)
-                else if (n.includes(repo) && !allowed.some((a) => n.includes(a)))
+                else if (n.includes(repo) && !allowed.some((a) => n.includes(a)) && !inNodeModules(n, repo))
                     problems.push(`${block.name}: access to the ASE repository ${s}`)
             }
         }

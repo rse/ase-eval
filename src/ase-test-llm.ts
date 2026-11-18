@@ -5,6 +5,7 @@
 */
 
 import Anthropic from "@anthropic-ai/sdk"
+import chalk     from "chalk"
 import { query } from "@anthropic-ai/claude-agent-sdk"
 
 import type { Sandbox }   from "./ase-test-sandbox.js"
@@ -18,7 +19,7 @@ const LLM_TIMEOUT_MS = 120 * 1000
 /*  the accumulated spend of all simulator and judge completions, booked
     against the global cost ceiling (the plain SDK path reports no cost, so
     only a model of the pricing table contributes there)  */
-export const llmSpend = { usd: 0 }
+export const llmSpend = { usd: 0, fallbacks: 0 }
 
 /*  a single-shot, tool-less LLM text completion for the user simulator and the
     rubric judge: with an API key the plain Anthropic SDK is used directly (cheap,
@@ -26,7 +27,7 @@ export const llmSpend = { usd: 0 }
     whose process authenticates with the same (OAuth) credentials of the sandboxed
     HOME as the tested sessions -- both paths are needed, as the plain SDK cannot
     authenticate with OAuth credentials at all  */
-export const llmText = async (sandbox: Sandbox, model: string,
+const llmTextOnce = async (sandbox: Sandbox, model: string,
     system: string, prompt: string): Promise<string> => {
     const abort = new AbortController()
     const timer = setTimeout(() => { abort.abort() }, LLM_TIMEOUT_MS)
@@ -37,6 +38,8 @@ export const llmText = async (sandbox: Sandbox, model: string,
                 model, max_tokens: 1024, system,
                 messages: [ { role: "user", content: prompt } ]
             }, { signal: abort.signal })
+            if (response.stop_reason === "refusal")
+                throw new Error(`safeguards flagged this message (refusal, model: ${model})`)
             llmSpend.usd += pricingCallCost(model, response.usage as Record<string, any>) ?? 0
             return response.content.filter((block) => block.type === "text")
                 .map((block) => block.text).join("\n").trim()
@@ -73,5 +76,24 @@ export const llmText = async (sandbox: Sandbox, model: string,
     }
     finally {
         clearTimeout(timer)
+    }
+}
+
+/*  the completion of the simulator and the judge, where a safeguard refusal of the
+    reference model (deterministic for the prompt, and frequent for the transcripts
+    of weaker models) is repeated once with the fallback reference model  */
+export const llmText = async (sandbox: Sandbox, model: string,
+    system: string, prompt: string): Promise<string> => {
+    try {
+        return await llmTextOnce(sandbox, model, system, prompt)
+    }
+    catch (err) {
+        const fallback = process.env.ASE_TEST_REF_FALLBACK ?? ""
+        if (!/safeguards flagged/.test(err instanceof Error ? err.message : String(err))
+            || fallback === "" || fallback === model)
+            throw err
+        llmSpend.fallbacks += 1
+        console.log(chalk.yellow(`⚠ judge/simulator: safeguards refused "${model}" -- falling back to "${fallback}"`))
+        return llmTextOnce(sandbox, fallback, system, prompt)
     }
 }

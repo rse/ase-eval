@@ -29,7 +29,11 @@ baseline arms in `uplift/`.
     stage-3 diagnostic and the case-level `fileExists: csvq.py`.
 -   **Details not elicited by the grilling** (numeric filter rule, `avg`
     with two decimals, `csvq: error:` to stderr, exit code 1): caught by
-    the hidden 12-test suite.
+    the hidden 12-test suite. `test_unknown_command` deliberately stays
+    strict (stderr must *start* with `csvq: error:`, i.e. no `argparse`
+    usage line before it): the persona demands "one line", but reveals
+    it only when asked, so the test measures whether the grilling digs
+    this detail out, not only whether the implementation works.
 -   **Broken core behavior** (selection, RFC-4180 quoting, filtering,
     aggregation): caught by the three `exec` oracles against the hidden
     reference `oracle.py`.

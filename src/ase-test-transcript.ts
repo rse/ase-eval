@@ -58,7 +58,7 @@ export const transcriptOpen = (resultsDir: string, caze: TestCase, run: number, 
             `${caze.staged ? `, stage ${stage}: ${caze.stages[stage - 1].skill}` : ""})\n\n`, "utf8")
         return {
             onMessage: (msg) => {
-                fs.appendFileSync(jsonl, `${JSON.stringify(msg)}\n`, "utf8")
+                fs.appendFileSync(jsonl, `${JSON.stringify({ ...msg, _receivedAt: new Date().toISOString() })}\n`, "utf8")
                 const lines: string[] = []
                 if (msg.type === "system" && msg.subtype === "init")
                     lines.push(`**SESSION**: \`${msg.session_id}\` (model: \`${msg.model}\`)`)

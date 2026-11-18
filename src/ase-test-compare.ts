@@ -14,7 +14,10 @@ import prettyMs    from "pretty-ms"
 import { harnessRoot } from "./ase-test-sandbox.js"
 
 /*  the shape of a "summary.json" file (tolerantly read, all fields optional)  */
-type Run     = { run: number, outcome: string, costUsd: number, durationMs: number, model: string }
+type Run     = {
+    run: number, outcome: string, costUsd: number, durationMs: number, model: string,
+    infraKind?: string, costBasis?: string
+}
 type Case    = { name: string, skill: string, pass: boolean, incomplete?: boolean, minPass: number, runs: Run[] }
 type Meta    = { timestamp?: string, model?: string, pluginCommit?: string, pluginVersion?: string }
 type Summary = { meta: Meta, cases: Case[], totalUsd: number, aborted: string }
@@ -29,7 +32,10 @@ type Entry = {
 }
 
 /*  the aggregate of all runs of one matrix cell resp. time-table row  */
-type Agg = { total: number, passed: number, costUsd: number, durationMs: number, infra: number }
+type Agg = {
+    total: number, passed: number, costUsd: number, durationMs: number, infra: number,
+    infraKinds: Record<string, number>, unpriced: number
+}
 
 /*  parse the command line  */
 const program = new Command()
@@ -117,9 +123,13 @@ entries.sort((a, b) => a.time.localeCompare(b.time))
     only counted separately, outside of the pass rates, costs, and durations  */
 const models = [ ...new Set(entries.map((entry) => entry.model)) ].sort()
 const aggAdd = (map: Map<string, Agg>, key: string, run: Run): void => {
-    const agg = map.get(key) ?? { total: 0, passed: 0, costUsd: 0, durationMs: 0, infra: 0 }
+    const agg = map.get(key) ??
+        { total: 0, passed: 0, costUsd: 0, durationMs: 0, infra: 0, infraKinds: {}, unpriced: 0 }
     if (run.outcome === "error") {
+        const kind = run.infraKind ?? ""
         agg.infra += 1
+        if (kind !== "")
+            agg.infraKinds[kind] = (agg.infraKinds[kind] ?? 0) + 1
         map.set(key, agg)
         return
     }
@@ -127,6 +137,7 @@ const aggAdd = (map: Map<string, Agg>, key: string, run: Run): void => {
     agg.passed     += run.outcome === "pass" ? 1 : 0
     agg.costUsd    += run.costUsd ?? 0
     agg.durationMs += run.durationMs ?? 0
+    agg.unpriced   += run.costBasis === "unpriced" ? 1 : 0
     map.set(key, agg)
 }
 const byCase  = new Map<string, Agg>()
@@ -146,10 +157,13 @@ const groupNames = [ ...new Set([ ...byGroup.keys() ].map((key) => key.split("\u
 const cellText = (agg: Agg | undefined): string => {
     if (agg === undefined || (agg.total === 0 && agg.infra === 0))
         return "·"
-    const infra = agg.infra > 0 ? ` +${agg.infra} infra` : ""
+    const kinds = Object.entries(agg.infraKinds).map(([ kind, n ]) => `${n} ${kind}`).join(", ")
+    const infra = agg.infra > 0 ? ` +${agg.infra} infra${kinds !== "" ? ` (${kinds})` : ""}` : ""
     if (agg.total === 0)
         return `0/0${infra}`
-    return `${agg.passed}/${agg.total} $${(agg.costUsd / agg.total).toFixed(2)} ` +
+
+    /*  a fallback-priced ("unpriced") cost is only an estimate, marked by "~"  */
+    return `${agg.passed}/${agg.total} ${agg.unpriced > 0 ? "~" : ""}$${(agg.costUsd / agg.total).toFixed(2)} ` +
         prettyMs(agg.durationMs / agg.total, { compact: true }) + infra
 }
 
@@ -281,8 +295,8 @@ const md =
     "ASE Test Run Comparison\n=======================\n\n" +
     `Generated ${generated} from ${entries.length} run summaries, ${models.length} models. ` +
     "Cells show passed/runs, mean cost per run, and mean duration per run " +
-    "(skipped runs excluded, infrastructure errors only counted as \"+N infra\"; " +
-    "costs of non-Anthropic gateway models are unreliable).\n\n" +
+    "(skipped runs excluded, infrastructure errors only counted as \"+N infra (kinds)\"; " +
+    "a \"~\" marks fallback-priced, i.e. estimated, costs of unpriced gateway models).\n\n" +
     "## Cases × Models\n\n"       + markdownTable(matrixRows(caseNames, byCase, "case"))     + "\n\n" +
     "## Case Groups × Models\n\n" + markdownTable(matrixRows(groupNames, byGroup, "group")) + "\n\n" +
     "## Runs over Time\n\n"            + markdownTable(timeRows)                                 + "\n"
@@ -345,8 +359,8 @@ span.swatch { width: 12px; height: 12px; border-radius: 3px; display: inline-blo
 <body>
 <h1>ASE Test Run Comparison</h1>
 <p class="sub">Generated ${generated} from ${entries.length} run summaries, ${models.length} models.
-Cells show passed/runs, mean cost per run, and mean duration per run (skipped runs excluded, infrastructure errors only counted as "+N infra";
-costs of non-Anthropic gateway models are unreliable). Click a column header to sort.</p>
+Cells show passed/runs, mean cost per run, and mean duration per run (skipped runs excluded, infrastructure errors only counted as "+N infra (kinds)";
+a "~" marks fallback-priced, i.e. estimated, costs of unpriced gateway models). Click a column header to sort.</p>
 <h2>Cases × Models</h2>
 ${htmlTable(matrixRows(caseNames, byCase, "case"))}
 <h2>Case Groups × Models</h2>

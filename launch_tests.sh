@@ -14,6 +14,8 @@
 ##    --models <ids>     comma-separated model ids to force, e.g. --models claude-haiku-5-5
 ##    --ref-model <id>   fixed judge and simulator model of all runners
 ##                       (default: $ASE_TEST_REF_MODEL, else eu.anthropic.claude-opus-5-5)
+##    --ref-fallback <id> judge and simulator model after a safeguard refusal
+##                       (default: $ASE_TEST_REF_FALLBACK, else eu.anthropic.claude-sonnet-5)
 ##    --yes              skip the cost confirmation
 ##  Harness options are passed to every runner, e.g. --jobs=6 -K --max-cost-usd=50.
 ##  After a run, a "repeat:" line shows the command that repeats the exact run.

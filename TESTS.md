@@ -249,13 +249,35 @@ sessions use the automatic permission mode of the agent tool.
     so far (capped by, and before the first accurate run at, its budget),
     and at its lower bound (usually `0`) if it never produced an
     assistant message (e.g. a crash while loading the gateway settings).
--   A session without any SDK message (incl. streamed partial messages)
-    for `$ASE_TEST_STALL_SEC` seconds (default `120`, `0` disables it) is
-    aborted as a *stall* -- e.g. a hanging gateway stream -- and is an
-    infrastructure error, retried once.
--   After 3 consecutive infrastructure errors, the workers pause before
-    scheduling further runs (60 s, doubling up to 300 s), so a gateway
-    outage does not burn through the remaining runs.
+-   A session without any *progress* for `$ASE_TEST_STALL_SEC` seconds
+    (default `120`, `0` disables it) is aborted as a *stall* -- e.g. a
+    hanging gateway stream -- and is an infrastructure error, retried
+    once. Progress is any regular SDK message and any streamed event
+    except a keep-alive `ping`, while thinking (streamed thinking deltas
+    and `thinking_tokens` estimates) counts only once it adds up to
+    `$ASE_TEST_STALL_MIN_TOKENS` tokens (default `50`), so a stream
+    trickling a few tokens for minutes is caught, too. Every message of
+    `transcript.jsonl` carries its receive time as `_receivedAt`.
+-   After 3 consecutive infrastructure errors (other than gateway
+    outages), the workers pause before scheduling further runs (60 s,
+    doubling up to 300 s).
+-   A *gateway outage* (`Couldn't load settings from Cloud gateway`,
+    `API Error: 5xx`/`529`, `Service Temporarily Unavailable`,
+    `overloaded_error`) pauses *all* workers of *all* runners of a
+    launcher (shared through `$ASE_TEST_OUTAGE_FILE`, which the launcher
+    sets to `results/.outage-<timestamp>`, else `<results>/.outage`):
+    60 s, doubling per consecutive outage up to 300 s, plus a jitter;
+    every attempt waits for its end, and the first ordinary run resets
+    the streak. A transient error (gateway, API, simulator) is retried
+    only after at least 30 s plus a jitter.
+-   Every infrastructure error carries its kind (`infraKind` in the
+    summary, `⚠ infra (<kind>)` in the console, `+N infra (kinds)` in
+    the comparison): `gateway`, `api`, `mcp`, `sim`, `stall`, `eval`, or
+    `crash`.
+-   The workers start staggered: the pool waits `$ASE_TEST_START_DELAY`
+    seconds (the launcher sets `20 × runner index`), and worker `i`
+    another `i × $ASE_TEST_STAGGER_SEC` seconds (default `10`), so a batch does not open all its sessions at
+    the same instant.
 -   A run is retried exactly once, into `run-<n>-retry/`, when its
     session crashed before the skill produced any output or the attempt
     threw (e.g. the sandbox creation failed), and only while the ceiling
@@ -267,12 +289,27 @@ sessions use the automatic permission mode of the agent tool.
     is an infrastructure error and retried, too. A failed evaluation
     (e.g. a judge timeout) retries the oracles alone, up to 3 attempts,
     and then reports the run as an infrastructure `error`, never as a
-    model failure.
+    model failure. A *failed* run whose session saw a gateway or server
+    error (e.g. a sub-agent hit by an HTTP 503) is an infrastructure
+    error (`api`) and retried, while a passed run stays passed.
+-   A safeguard refusal of the reference model (`safeguards flagged this
+    message`) as judge or simulator is repeated once with the fallback
+    reference model `$ASE_TEST_REF_FALLBACK` (the launcher's
+    `--ref-fallback`, default `eu.anthropic.claude-sonnet-5`), and never
+    retried with the same model; the summary counts the fallbacks in
+    `meta.refFallbacks`.
+-   A session calling `ase_task_save` more than 5 times gets the
+    diagnostic `saveLoop`.
 -   `summary.json` is rewritten after every finished run (`aborted:
     "incomplete"` until the end), and an interrupt (SIGINT/SIGTERM)
     aborts all live sessions, tears down their sandboxes, and writes the
     final summary with the unfinished runs as `skipped`; a second
-    interrupt exits immediately.
+    interrupt exits immediately. The summary is written before the
+    console report of a run, so a failing console write (e.g. a crashed
+    launcher) never loses a finished run.
+-   `npm start clean-sandboxes` (`etc/clean-sandboxes.sh [--dry-run]`)
+    removes the leftover `/tmp/ase-test-*` sandboxes of killed runs
+    (older than one minute) and stops their `ase service` processes.
 
 ## Sandboxing
 
@@ -330,8 +367,11 @@ model. The explicit case selection bypasses the probe gate. The
 session and its sub-agents run on the selected model, while the judge
 and the simulator stay on one fixed reference model for all models
 (`--ref-model <id>`, default `$ASE_TEST_REF_MODEL`, else
-`eu.anthropic.claude-opus-5-5`), so no model grades itself or plays its
-own user. A Ctrl-C reaches every runner, and the launcher waits for
+`eu.anthropic.claude-opus-5-5`, with the fallback `--ref-fallback <id>`
+after a safeguard refusal), so no model grades itself or plays its
+own user. The runners share one gateway outage state and start 20 s
+apart; the progress lines are redrawn in place at most 5 times per
+second, cut to the terminal width. A Ctrl-C reaches every runner, and the launcher waits for
 their teardown and still refreshes the comparison. Extra
 options (e.g. `--jobs=6`, `-K`, `--max-cost-usd=50`) are passed through
 to every runner; a `--max-cost-usd` ceiling therefore applies per model
@@ -344,7 +384,7 @@ case globs), `--models <ids>` (comma-separated model ids, taken as given
 -- use resolved ids, not UI aliases), and `--yes` (skip the cost
 confirmation). With all three given, no terminal interaction is needed.
 After the final PASS/FAIL lines the launcher prints a `repeat:` line:
-one copyable command (`./launch_tests.sh --tests ... --models ... --ref-model ... --yes`
+one copyable command (`./launch_tests.sh --tests ... --models ... --ref-model ... --ref-fallback ... --yes`
 plus the pass-through options) that repeats the exact run.
 
 ## Comparing Runs

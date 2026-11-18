@@ -7,7 +7,14 @@
 ##  results/<timestamp>-<model>/ directory -- with live progress, and
 ##  finally refresh COMPARISON.md and COMPARISON.html
 ##
-##  Usage: ./launch_tests.sh [harness options, e.g. --jobs=6 -K --max-cost-usd=50]
+##  Usage: ./launch_tests.sh [launcher options] [harness options]
+##
+##  Launcher options (each one given skips its interactive step):
+##    --tests <globs>    comma-separated case globs, e.g. --tests probe/help,meta/*
+##    --models <ids>     comma-separated model ids to force, e.g. --models claude-haiku-5-5
+##    --yes              skip the cost confirmation
+##  Harness options are passed to every runner, e.g. --jobs=6 -K --max-cost-usd=50.
+##  After a run, a "repeat:" line shows the command that repeats the exact run.
 ##
 
 set -euo pipefail

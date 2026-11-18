@@ -295,6 +295,15 @@ options (e.g. `--jobs=6`, `-K`, `--max-cost-usd=50`) are passed through
 to every runner. Afterwards the comparison report is refreshed (see
 below); the exit code is the worst runner exit code.
 
+Each interactive step can be skipped with a launcher option:
+`--tests <globs>` (comma-separated case globs, resolved like the harness
+case globs), `--models <ids>` (comma-separated model ids, taken as given
+-- use resolved ids, not UI aliases), and `--yes` (skip the cost
+confirmation). With all three given, no terminal interaction is needed.
+After the final PASS/FAIL lines the launcher prints a `repeat:` line:
+one copyable command (`./launch_tests.sh --tests ... --models ... --yes`
+plus the pass-through options) that repeats the exact run.
+
 ## Comparing Runs
 
 ```

@@ -10,6 +10,7 @@ import * as readline from "node:readline"
 
 import { execa }     from "execa"
 import chalk         from "chalk"
+import picomatch     from "picomatch"
 
 import { caseDiscover }  from "./ase-test-case.js"
 import { harnessRoot }   from "./ase-test-sandbox.js"
@@ -96,6 +97,46 @@ const pick = (title: string, items: PickItem[], selectAll: boolean): Promise<num
     })
 }
 
+/*  the launcher's own command line: the test and model selection and the
+    confirmation, split off from the options passed through to every runner
+    (exported pure, so the splitting is testable offline)  */
+export type LaunchArgs = { tests: string[] | null, models: string[] | null, yes: boolean, passThrough: string[] }
+export const parseArgv = (argv: string[]): LaunchArgs => {
+    const result: LaunchArgs = { tests: null, models: null, yes: false, passThrough: [] }
+    const items = (name: string, value: string | undefined): string[] => {
+        const list = (value ?? "").split(",").map((s) => s.trim()).filter((s) => s !== "")
+        if (list.length === 0)
+            throw new Error(`option ${name} needs a comma-separated list`)
+        return list
+    }
+    for (let i = 0; i < argv.length; i++) {
+        const arg = argv[i]
+        const opt = /^(--tests|--models)(?:=(.*))?$/.exec(arg)
+        if (opt !== null) {
+            const value = opt[2] !== undefined ? opt[2] : argv[++i]
+            if (opt[1] === "--tests")
+                result.tests  = items(opt[1], value)
+            else
+                result.models = items(opt[1], value)
+        }
+        else if (arg === "--yes")
+            result.yes = true
+        else
+            result.passThrough.push(arg)
+    }
+    return result
+}
+
+/*  the command line that repeats this exact run (exported pure for testing);
+    a glob character gets quoted, so the shell passes it through verbatim  */
+export const repeatLine = (tests: string[], models: string[], passThrough: string[]): string => {
+    const quote = (s: string) => /^[A-Za-z0-9._,=/@:-]+$/.test(s) ? s : `'${s.replace(/'/g, "'\\''")}'`
+    return [ "./launch_tests.sh",
+        "--tests",  quote(tests.join(",")),
+        "--models", quote(models.join(",")),
+        "--yes", ...passThrough.map(quote) ].join(" ")
+}
+
 /*  fetch the available models from the agent tool via the "initialize"
     control request of its stream-json interface  */
 const modelList = async (): Promise<PickItem[]> => {
@@ -159,46 +200,67 @@ const runnerLine = (runner: Runner): string => {
 
 /*  main control flow  */
 const main = async (): Promise<void> => {
-    if (!process.stdin.isTTY || !process.stdout.isTTY)
-        throw new Error("interactive terminal required")
+    const opts        = parseArgv(process.argv.slice(2))
+    const interactive = opts.tests === null || opts.models === null || !opts.yes
+    if (interactive && (!process.stdin.isTTY || !process.stdout.isTTY))
+        throw new Error("interactive terminal required (or pass --tests, --models, and --yes)")
 
-    /*  step 1: pick the test cases ("select all tests" as the first entry)  */
+    /*  step 1: pick the test cases ("select all tests" as the first entry),
+        or resolve the globs of --tests against the discovered cases  */
     const cases = caseDiscover(path.join(harnessRoot, "cases"))
-    const caseItems = cases.map((caze) => ({
-        label: caze.name,
-        hint:  `(runs: ${caze.runs}, minPass: ${caze.minPass})`,
-        value: caze.name
-    }))
-    let pickedCases: number[] | null = null
-    while (pickedCases === null || pickedCases.length === 0) {
-        pickedCases = await pick("Select the tests to run:", caseItems, true)
-        if (pickedCases === null)
-            throw new Error("aborted -- no tests were run")
+    let selectedCases: typeof cases
+    if (opts.tests !== null) {
+        const matchers = opts.tests.map((glob) => ({ glob, match: picomatch(glob) }))
+        for (const matcher of matchers)
+            if (!cases.some((caze) => matcher.match(caze.name)))
+                throw new Error(`no case matches the glob "${matcher.glob}"`)
+        selectedCases = cases.filter((caze) => matchers.some((matcher) => matcher.match(caze.name)))
     }
-    const selectedCases = pickedCases.map((i) => cases[i])
+    else {
+        const caseItems = cases.map((caze) => ({
+            label: caze.name,
+            hint:  `(runs: ${caze.runs}, minPass: ${caze.minPass})`,
+            value: caze.name
+        }))
+        let pickedCases: number[] | null = null
+        while (pickedCases === null || pickedCases.length === 0) {
+            pickedCases = await pick("Select the tests to run:", caseItems, true)
+            if (pickedCases === null)
+                throw new Error("aborted -- no tests were run")
+        }
+        selectedCases = pickedCases.map((i) => cases[i])
+    }
 
-    /*  step 2: pick the models (no pre-selection, no "select all")  */
-    console.log(chalk.dim("fetching the available models..."))
-    const modelItems = await modelList()
-    let pickedModels: number[] | null = null
-    while (pickedModels === null || pickedModels.length === 0) {
-        pickedModels = await pick("Select the models to run the tests with:", modelItems, false)
-        if (pickedModels === null)
-            throw new Error("aborted -- no tests were run")
+    /*  step 2: pick the models (no pre-selection, no "select all"),
+        or take the ids of --models as they are (already resolved)  */
+    let models: string[]
+    if (opts.models !== null)
+        models = opts.models
+    else {
+        console.log(chalk.dim("fetching the available models..."))
+        const modelItems = await modelList()
+        let pickedModels: number[] | null = null
+        while (pickedModels === null || pickedModels.length === 0) {
+            pickedModels = await pick("Select the models to run the tests with:", modelItems, false)
+            if (pickedModels === null)
+                throw new Error("aborted -- no tests were run")
+        }
+        models = pickedModels.map((i) => modelItems[i].value)
     }
-    const models = pickedModels.map((i) => modelItems[i].value)
 
     /*  step 3: confirm the matrix, as every run burns real tokens  */
     const runsPerModel = selectedCases.reduce((sum, caze) => sum + caze.runs, 0)
     console.log(`\n${selectedCases.length} test(s) x ${models.length} model(s), ` +
         `${runsPerModel} run(s) per model, ${runsPerModel * models.length} run(s) in total.`)
     console.log(chalk.yellow("WARNING: every run burns real tokens and costs actual money."))
-    const answer = await new Promise<string>((resolve) => {
-        const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
-        rl.question("Run now? [y/N] ", (text) => { rl.close(); resolve(text) })
-    })
-    if (answer !== "y" && answer !== "Y")
-        throw new Error("aborted -- no tests were run")
+    if (!opts.yes) {
+        const answer = await new Promise<string>((resolve) => {
+            const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+            rl.question("Run now? [y/N] ", (text) => { rl.close(); resolve(text) })
+        })
+        if (answer !== "y" && answer !== "Y")
+            throw new Error("aborted -- no tests were run")
+    }
 
     /*  step 4: launch one runner process per model, each into its own
         results directory, with the full model forcing of run_all_tests.sh  */
@@ -230,7 +292,7 @@ const main = async (): Promise<void> => {
         if (env.ASE_TEST_BUDGET_FACTOR === undefined && !/anthropic\.claude/.test(model))
             env.ASE_TEST_BUDGET_FACTOR = "3"
         const argv  = [ "--import", "tsx", "src/ase-test.ts", ...globs,
-            `--results=${resultsDir}`, ...process.argv.slice(2) ]
+            `--results=${resultsDir}`, ...opts.passThrough ]
         const child = execa("node", argv, { cwd: harnessRoot, env, reject: false, all: true, buffer: false })
         const input = readline.createInterface({ input: child.all! })
         input.on("line", (raw) => {
@@ -294,6 +356,9 @@ const main = async (): Promise<void> => {
         }
         console.log(`${verdict} ${runner.model} ` + chalk.dim(`(results/${timestamp}-${runner.slug})`))
     }
+
+    /*  one copyable command line that repeats this exact run  */
+    console.log(chalk.dim(`repeat: ${repeatLine(globs, models, opts.passThrough)}`))
     process.exit(worst)
 }
 

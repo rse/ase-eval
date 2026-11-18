@@ -256,6 +256,20 @@ the invocation holds all runs plus the provenance (endpoint, models,
 plugin commit and version, SDK and Node.js versions). Results are never
 committed.
 
+## Launching Tests Interactively
+
+`./launch_tests.sh` (or `npm start launch`) first offers a checkbox list
+of all test cases (nothing preselected, the first entry selects all),
+then a checkbox list of the models of the live `claude` model listing
+(nothing preselected, no select-all), confirms the cost, and runs the
+selected cases with every selected model: one runner process per model
+in parallel, each into its own `results/<timestamp>-<model>/` directory
+(child output in its `launcher.log`), with a live progress line per
+model. The explicit case selection bypasses the probe gate. Extra
+options (e.g. `--jobs=6`, `-K`, `--max-cost-usd=50`) are passed through
+to every runner. Afterwards the comparison report is refreshed (see
+below); the exit code is the worst runner exit code.
+
 ## Comparing Runs
 
 ```

@@ -66,7 +66,8 @@ export const reportRun = (name: string, outcome: RunOutcome, failHint = ""): voi
     const mark = outcome.outcome === "pass" ? chalk.green("✔") :
         outcome.outcome === "fail"    ? chalk.red("✘") :
             outcome.outcome === "skipped" ? chalk.yellow("−") : chalk.red("⚠")
-    const info = `(${prettyMs(outcome.durationMs)}, $${outcome.costUsd.toFixed(4)})`
+    const info = `(${prettyMs(outcome.durationMs)}, $${outcome.costUsd.toFixed(4)}` +
+        `${outcome.model !== "" ? `, ${outcome.model}` : ""})`
     console.log(`${mark} ${name} run ${outcome.run} ${chalk.dim(info)}`)
     for (const oracle of outcome.oracles)
         if (!oracle.pass)
@@ -87,6 +88,8 @@ export const reportRun = (name: string, outcome: RunOutcome, failHint = ""): voi
 export const reportSummary = (resultsDir: string, cases: CaseOutcome[],
     totalUsd: number, aborted: string, meta: Record<string, string>): number => {
     console.log("")
+    if ((meta.model ?? "") !== "")
+        console.log(chalk.dim(`model: ${meta.model}`))
     for (const caze of cases) {
         const passed = caze.runs.filter((run) => run.outcome === "pass").length
         const mark   = caze.pass ? chalk.green("PASS") : chalk.red("FAIL")

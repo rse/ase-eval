@@ -133,6 +133,7 @@ fixed dates; the change commit is the baseline of the `gitDiff` oracle.
 | `fileExists` | path or list of paths                                      | all files exist in the project                                              |
 | `gitDiff`    | `empty`, `changed`, `unchanged`, `mustMatch`, `mustNotMatch` | the changeset diff against the fixture commit satisfies all fields        |
 | `taskStore`  | `id`, `exists`, `status`, `titleMatch`, `bodyMatch`, `count` | the task store (`.ase/task/`) satisfies all fields                        |
+| `toolSequence` | `calls`, `mode`, `only`                                  | the tool calls matching `only` (default `^mcp__`), matched by their name suffix after the last `__`, equal `calls` (`mode: exact`) resp. contain them in order (`subsequence`, the default) |
 | `textMetric` | `in`, `file`, `min`/`maxChars`, `min`/`maxWords`           | the target's length is within the bounds                                    |
 | `exec`       | `command`, `reference`, `stdin`, `timeoutSec`              | `command` (in the project) prints the same stdout as `reference` (in the case directory) for every `stdin` vector, trailing whitespace ignored |
 | `suite`      | `dir`, `timeoutSec`                                        | the hidden Python suite `dir`, copied into the project only after the last session and the diff, runs via `python3 -m unittest discover` with every test passed |
@@ -252,4 +253,25 @@ Per run, `results/<timestamp>/<group>/<name>/run-<n>/` holds:
 A staged run prefixes the transcript and stderr files with `stage-<N>-`
 and adds the per-stage results to `result.json`. The `summary.json` of
 the invocation holds all runs plus the provenance (endpoint, models,
-plugin commit, SDK and Node.js versions). Results are never committed.
+plugin commit and version, SDK and Node.js versions). Results are never
+committed.
+
+## Comparing Runs
+
+```
+npm start compare                                  # compare all summaries under results/ (free)
+npm start compare -- --add=../some-run-dir          # include an extra run directory
+npm start compare -- --results=other --out=/tmp     # non-default input and output directories
+```
+
+`src/ase-test-compare.ts` collects every `results/*/summary.json`
+(including the nested uplift summaries) plus the `--add` directories and
+prints a cases × models matrix, a case-groups × models matrix
+(cells: passed/runs, mean cost, mean duration; skipped runs excluded),
+and a runs-over-time table (timestamp, model, plugin version resp.
+commit, pass counts, cost, duration). It also writes `COMPARISON.md` and
+a self-contained `COMPARISON.html` (sortable tables, pass-rate and cost
+trend charts) into the repository root. The model of a summary is the
+forced model, else the most frequent per-run model; the version is the
+`pluginVersion` meta field (recorded by the harness from now on), with
+the `pluginCommit` prefix as the fallback for older summaries.

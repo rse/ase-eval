@@ -1,0 +1,35 @@
+#   probe: instruction-following on tool-call order -- four MCP tool calls
+#   whose instructed order is asserted by the "toolSequence" oracle, so a
+#   silently repaired disorder (same end state, wrong path) still fails
+promptFile: prompt.md
+runs: 3
+minPass: 2
+timeoutSec: 180
+budget: { maxUsd: 1.00 }
+failHint: >-
+  the model violated the instructed tool-call order: the toolSequence
+  detail names the first out-of-order, missing, or extra MCP call -- an
+  instruction-following weakness of the model, not a gateway problem
+fixture:
+  git: true
+  lifecycle: solo
+  tasks:
+    - fixture/TASK-alpha.md
+oracles:
+  - notErrored: true
+  - toolSequence:
+      mode: exact
+      calls:
+        - ase_task_load
+        - ase_task_save
+        - ase_task_status
+        - ase_task_assign
+  - taskStore:
+      id: alpha
+      status: SHELVED
+      bodyMatch: "call-order probe marker"
+  - regex:
+      in: file
+      file: ".ase/task/TASK-alpha.md"
+      match: "^Assignee:\\s+probe$"
+  - gitDiff: { empty: true }

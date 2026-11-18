@@ -347,6 +347,9 @@ const pluginCommit = await execa("git", [ "rev-parse", "HEAD" ], { cwd: repoRoot
 const sdkVersion = await fs.promises.readFile(
     path.join(harnessRoot, "node_modules", "@anthropic-ai", "claude-agent-sdk", "package.json"), "utf8")
     .then((text) => (JSON.parse(text) as { version?: string }).version ?? "").catch(() => "")
+const pluginVersion = await fs.promises.readFile(
+    path.join(repoRoot, "plugin", "package.json"), "utf8")
+    .then((text) => (JSON.parse(text) as { version?: string }).version ?? "").catch(() => "")
 const meta = {
     timestamp,
     endpoint:     process.env.ANTHROPIC_BASE_URL ?? "https://api.anthropic.com",
@@ -354,6 +357,7 @@ const meta = {
     judgeModel:   process.env.ASE_TEST_JUDGE_MODEL ?? "claude-haiku-5-5",
     simModel:     process.env.ASE_TEST_SIM_MODEL ?? "claude-haiku-5-5",
     pluginCommit,
+    pluginVersion,
     sdkVersion,
     nodeVersion:  process.version
 }

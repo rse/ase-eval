@@ -245,6 +245,39 @@ export const oraclesRun = async (oracles: OracleSpec[], caze: TestCase, sandbox:
                 detail: faults.join(", ") || "task store as expected"
             })
         }
+        else if ("toolSequence" in oracle) {
+            const spec   = oracle.toolSequence
+            const only   = new RegExp(spec.only)
+            const called = result.messages
+                .filter((msg) => msg.type === "assistant")
+                .flatMap((msg) => ((msg.message?.content ?? []) as { type: string, name?: string }[])
+                    .filter((block) => block.type === "tool_use")
+                    .map((block) => block.name ?? ""))
+                .filter((name) => only.test(name))
+                .map((name) => name.split("__").at(-1) ?? name)
+            let fault = ""
+            if (spec.mode === "exact") {
+                for (let i = 0; i < Math.max(called.length, spec.calls.length); i++)
+                    if (called[i] !== spec.calls[i]) {
+                        fault = called[i]     === undefined ? `call ${i + 1} missing, expected "${spec.calls[i]}"` :
+                            spec.calls[i] === undefined ? `unexpected call ${i + 1} "${called[i]}"` :
+                                `call ${i + 1} was "${called[i]}", expected "${spec.calls[i]}"`
+                        break
+                    }
+            }
+            else {
+                let at = 0
+                for (const name of called)
+                    if (at < spec.calls.length && name === spec.calls[at])
+                        at++
+                if (at < spec.calls.length)
+                    fault = `call "${spec.calls[at]}" missing or out of order`
+            }
+            results.push({
+                kind: "toolSequence", pass: fault === "",
+                detail: fault !== "" ? `${fault} (got: ${called.join(", ") || "none"})` : "call sequence as expected"
+            })
+        }
         else if ("textMetric" in oracle) {
             const spec = oracle.textMetric
             const text = targetText(spec, caze, sandbox, result)

@@ -69,6 +69,16 @@ const oracleSchema = z.union([
         })
     }),
 
+    /*  the order of the tool calls of the session: the names (matched by
+        their suffix after the last "__") of the calls matching "only"  */
+    z.strictObject({
+        toolSequence: z.strictObject({
+            calls:        z.array(z.string()).min(1),
+            mode:         z.enum([ "exact", "subsequence" ]).default("subsequence"),
+            only:         z.string().default("^mcp__")
+        })
+    }),
+
     /*  length metrics of a target text  */
     z.strictObject({
         textMetric: z.strictObject({

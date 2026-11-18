@@ -82,6 +82,11 @@ const describeOracle = (caze: TestCase, oracle: OracleSpec): string[] => {
         if (spec.count !== undefined)
             lines.push(`    - task store holds ${spec.count} task(s)`)
     }
+    else if ("toolSequence" in oracle) {
+        const spec = oracle.toolSequence
+        lines.push(`    - tool calls matching /${spec.only}/ ${spec.mode === "exact" ?
+            "are exactly" : "contain in order"}: ${spec.calls.join(" -> ")}`)
+    }
     else if ("textMetric" in oracle) {
         const spec   = oracle.textMetric
         const target = spec.in === "file" ? `file "${spec.file ?? "?"}"` : spec.in

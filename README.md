@@ -74,6 +74,7 @@ npm start test -- -l                              # list the cases (free)
 npm start test -- -d --cases='meta/*'             # describe input and oracles of cases (free)
 ./run_agent_test.sh                               # "ase agent" end-to-end tests
 ./run_uplift_test.sh                              # ASE uplift benchmark incl. comparison (~$15-25)
+npm start compare                                 # compare past runs (free, writes COMPARISON.{md,html})
 ```
 
 ### With a Local LLM (Anthropic-compatible gateway, e.g. LiteLLM)
@@ -93,7 +94,7 @@ much slower, and the reported costs are meaningless for non-Anthropic
 models. See `TESTS.md` ("Third-Party Gateways") for the details and
 `LOCAL_SETUP.md` for a complete example setup.
 
-> **Notice:** the full suite (18 cases, 40 runs) costs roughly $36 on the
+> **Notice:** the full suite (19 cases, 43 runs) costs roughly $37 on the
 > Anthropic API, above the default ceiling of $20: pass
 > `--max-cost-usd=50`, else the run stops early with exit code `2`.
 
@@ -128,8 +129,8 @@ convention: `fixture/` (seeded files and task plans), a prompt file (for
 `rubric.md`, `expected-*.md`, `oracle.py`, `suite/`, and for review
 cases `fixture/base/`, `fixture/change/`, `solution/expected.json`, and
 `thresholds.json`. Available oracles: `notErrored`, `verdict`, `regex`,
-`fileExists`, `gitDiff`, `taskStore`, `textMetric`, `exec`, `suite`,
-`rubric`, `similar`, `review`; `ARCHITECTURE.md` ("Choosing Oracles")
+`fileExists`, `gitDiff`, `taskStore`, `toolSequence`, `textMetric`,
+`exec`, `suite`, `rubric`, `similar`, `review`; `ARCHITECTURE.md` ("Choosing Oracles")
 helps to pick them. The existing cases are the best templates; the
 full contract is in `TESTS.md` and the authoritative schema in
 `src/ase-test-case.ts`.

@@ -45,7 +45,7 @@ This runs ALL test cases of the ASE skill test harness.
 
 WARNING: every case runs real agent sessions against the Anthropic API
 (or the configured gateway), which consumes actual tokens and costs
-actual money (roughly $36 for the full suite of 18 cases, while the
+actual money (roughly $37 for the full suite of 19 cases, while the
 default --max-cost-usd ceiling is $20, so pass e.g. --max-cost-usd=50).
 
 The probe cases (probe/*, roughly $5) run first, and the remaining cases

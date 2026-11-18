@@ -63,8 +63,14 @@ needs an explicit, documented revision.
 ## What the test deliberately does not do
 
 - It does not let a language model judge the findings.
-- It does not measure what the ASE skill itself contributes; that would need a
-  baseline with the same model and an ordinary review prompt.
+- It compares models within one review setup, and with the second condition
+  `baseline` the same model with and without the skill (see
+  [Two measurement conditions, one code path](#two-measurement-conditions-one-code-path)).
+  The baseline prompt prescribes the output format the scorer reads, so the
+  comparison measures the skill's reading method, not its output format.
+- It has not measured a baseline yet: the condition exists and is covered by the
+  self-test, but no paid series has used it, so nothing is claimed about the
+  skill's contribution.
 - It does not change `ase-repo-review`, its sub-agent, or any other part of ASE.
 - It measures one skill only. Its own runner is not part of the skill harness;
   the harness runs the same cases through its own sandbox and session.
@@ -137,24 +143,77 @@ reason `leak`; the harness runs the same check when it loads a case.
 
 ### Isolation by construction, verified at runtime
 
-The CLI runs with `--setting-sources ""`, `--plugin-dir` pointing to this working
-copy's plugin, and `--strict-mcp-config` with a generated `--mcp-config` naming
-exactly the `ase` server. The model may read, search, and run `git`; editing,
-writing, and web access are disallowed, and `--permission-mode dontAsk` prevents
-questions. Inherited `CLAUDE*`, `ANTHROPIC_*`, and `npm_*` variables are removed.
+The CLI runs with `--setting-sources ""` and `--strict-mcp-config` with a
+generated `--mcp-config` naming exactly the servers of the condition; a run with
+ASE also gets `--plugin-dir` pointing to this working copy's plugin and the `ase`
+server. The model may read, search, and run `git`; editing, writing, and web
+access are disallowed, and `--permission-mode dontAsk` prevents questions.
+Inherited `CLAUDE*`, `ANTHROPIC_*`, and `npm_*` variables are removed.
 `--bare` was rejected because it also switches off the ASE plugin's hooks.
 
-The runner inspects the CLI's `init` event: another plugin (the CLI's built-in
-plugins are only logged), another MCP server, or a missing `ase` server stops
-the run as `error` with reason `isolation`. After the run, every tool call is
-checked for access to `cases/review/`, `src/review/`, a `solution/` folder, or
-the ASE repository outside `plugin/` and `tool/`; such a run ends as `error`
-with reason `contamination` and is not evaluated.
+The runner inspects the CLI's `init` event: a plugin the condition does not
+expect (the CLI's built-in plugins are only logged), an unexpected MCP server, or
+a missing expected one stops the run as `error` with reason `isolation`. The
+check works in both directions, so an ASE run without ASE and a baseline run
+with ASE both fail. After the run, every tool call is checked for access to
+`cases/review/`, `src/review/`, a `solution/` folder, or the ASE repository
+outside the paths the condition allows (`plugin/` and `tool/` for `ase`, none
+for `baseline`); such a run ends as `error` with reason `contamination` and is
+not evaluated. The skill harness calls the same check without a condition and
+gets the rule of `ase`.
 
 *Why:* the expected-results list sits next to the plugin under test; only a
 check makes a breach visible. *Price:* read access outside the copy can only be
 limited, not prevented; it is detected afterwards. Paths obscured on purpose,
 for instance through Git aliases, remain a residual risk.
+
+### Two measurement conditions, one code path
+
+A measurement runs in the condition `ase` or in the condition `baseline`. One
+exported record in `src/review/lib/runner.mjs` holds everything that differs
+between them: the prompt, the plugin directory, the MCP servers, the allowed
+tools, the plugins and servers the isolation check expects, the paths of the ASE
+repository the contamination check tolerates, whether the run uses ASE at all
+(`usesAse`), and the prompt file that has to be committed (`promptFile`). No
+script outside the record asks for a condition by name: the need for a built
+`tool/`, the ASE tool folder on the search path of the child process, the
+clean-up of ASE processes, the commit check of the prompt, and the limit of
+thresholds and calibration all read these two fields. Runner, copy, leak check,
+parser, matching, and metrics have one code path and take the condition as a
+parameter whose default is `ase`. The condition is written into `run.json` as
+the field `condition`; `schema` stays `1`, and a protocol without the field
+counts as `ase`, so the runs recorded before the baseline existed stay valid and
+re-score to the same figures. Report and log group by the pair of condition and
+model and label each group with the condition first, for example
+`baseline: claude-opus-5-5`, and a result folder carries the condition in its
+name.
+
+The baseline prompt is the whole content of `src/review/baseline-prompt.md`,
+one file for all cases. It states the task, the lowest severity to report, and
+the output format the parser reads; it names no review dimension, no class of
+defect, no procedure, and nothing about seeded defects. Like the threshold file
+it must be committed before a paid run, so it cannot be shaped after seeing
+results. The prompt is the normalized text of the file (CRLF and lone carriage
+returns become LF, trailing line breaks are dropped), and a `.gitattributes`
+rule checks it out with LF, so the same commit gives the same prompt on every
+machine.
+
+The thresholds and the ceiling-effect check were set for the `ase` setup. A
+group measured without ASE gets every figure, but the verdict
+`threshold not applicable` and no calibration; the limit is drawn once, in the
+report data, and the Markdown report, the log, and the console read that value.
+
+*Why:* without a second condition the benchmark can compare models inside the ASE
+setup but cannot say what the skill adds, and a second script would duplicate the
+invocation, the isolation check, and the protocol format. *Price:* three runner
+functions carry one parameter more, and every future condition has to be
+described in the record completely. The prescribed output format is the deeper
+price: the comparison measures the skill's reading method, not its format, and a
+baseline review that ignores the format counts as `unparseable`. A dry run of
+the baseline replays the `normal.jsonl` of the case with its `init` event
+fitted to the condition, so it shows the mechanism, never the quality of a
+baseline; the isolation check itself is covered by the self-test and by
+`--replay src/review/testdata/isolation.jsonl`.
 
 ### Hard cost and time limits, two steps for paid runs
 
@@ -162,14 +221,23 @@ Each run passes `--max-budget-usd` (default 5) to the CLI and is guarded by a
 timer (default 20 minutes) that kills the whole process tree. Before every
 further run the runner checks the series budget (default 30 USD): the spent
 amount plus 1.1 × the per-run limit must fit. A run without a cost report counts
-with its full limit; leftover ASE processes are stopped afterwards. Every run
-without `--dry-run` requires `--confirm-paid`, a built `tool/`, limits no higher
-than these defaults, and a `thresholds.json` that is valid and committed.
+with its full limit; after a run that uses ASE, leftover ASE processes are
+stopped, and a baseline run starts none. If the series budget ends `measure.mjs`
+before all planned runs are done, the series is neither compared nor logged: the
+command names the missing runs per condition and model, ends with exit code 3,
+and keeps the completed runs in the series folder. Every run without
+`--dry-run` requires `--confirm-paid`, limits no higher than these defaults,
+and a `thresholds.json` that is valid and committed; a run that uses ASE also
+requires a built `tool/`, and a run whose condition names a prompt file
+requires that file committed. `measure.mjs` checks this for every condition of a
+series before its first run.
 
 *Why:* paid runs were approved with fixed limits, and the pre-registration of the
-thresholds must be secured technically. *Price:* the CLI stops only between
-steps, so a run can end slightly above its limit; the protocol records the
-actual amount.
+thresholds and the prompt must be secured technically; an entry of the
+append-only log cannot be taken back, so a series cut short is not logged.
+*Price:* the CLI stops only between steps, so a run can end slightly above its
+limit; the protocol records the actual amount. The runs of a series cut short
+are paid for and stay unlogged until someone decides what to do with them.
 
 ### Dry runs cover everything but the model
 
@@ -364,8 +432,8 @@ overview row per configuration.
 
 ```mermaid
 flowchart TD
-    PF{"preflight:<br/>--confirm-paid, built tool/,<br/>committed thresholds, limits"} -- fail --> X["stop, no model call"]
-    PF -- ok --> L["per model: run.mjs --out series-TIME<br/>stops early when the series budget is reached"]
+    PF{"preflight per condition:<br/>--confirm-paid, built tool/ (ase),<br/>committed thresholds and prompt, limits"} -- fail --> X["stop, no model call"]
+    PF -- ok --> L["per condition and model: run.mjs --out series-TIME<br/>budget reached: missing runs named, exit 3, no compare, no log"]
     L --> CM["compare.mjs → series-TIME/report/"]
     CM --> D{"dry run?"}
     D -- yes --> PV["log-preview.md, log unchanged"]
@@ -385,6 +453,9 @@ commit. The log refuses a series it already holds, dry runs, and uncommitted
 scoring code or lists. Entries are never rewritten: a correction is a dated
 note, a re-scoring is a new entry. Commit hashes in older entries refer to the
 ASE repository, where the benchmark lived before.
+The head of the log above the overview table is a legend, not an entry: it
+explains the columns, among them the condition a configuration label starts
+with, and says that a row without a condition belongs to `ase`.
 
 *Why:* `report.md` follows the current scorer; comparisons over months need the
 figures as they were computed, next to the manual reading. *Price:* the log
@@ -411,6 +482,12 @@ scorer commit in each entry says which.
   alarm on reading. Security decoys provoke more remarks than style decoys, so
   the rates of the two base cases are not comparable; a severity-aware decoy
   rate remains open.
+- **The baseline is built but unmeasured.** The condition runs, is isolated in
+  both directions, and is protocolled, but no paid series has used it. It is open
+  whether a baseline review keeps the prescribed format; a run that does not is
+  counted `unparseable`, a finding about the baseline, not a defect of the
+  harness. The wording of the prompt is the author's choice: it is committed and
+  named in the log, so it can be argued with.
 - **Unknown precision.** Unassignable findings are not classified, so the share
   of unfounded complaints outside the decoys is not measured.
 - **A weakness outside the list of the hard case.** A `paid` event the provider

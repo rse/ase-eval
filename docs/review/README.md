@@ -24,9 +24,25 @@ What is tested is not a model on its own but a whole review setup: the model,
 the ASE skill and the helper agent it delegates the reading to, the Claude Code
 CLI, the tools they may use, the fixed prompt, and the limits of a run. The
 benchmark answers: *how does this ASE review setup behave with different models
-under the same test conditions?* It does not measure what the ASE skill itself
-contributes; that would need a baseline with the same model and an ordinary
-review prompt, which is not part of this benchmark.
+under the same test conditions?*
+
+A second measurement condition answers a second question: *how much of the
+result comes from the ASE skill, rather than from the model and the tools it has
+anyway?* The condition is part of every run protocol, report group, and log
+entry:
+
+| Condition | Prompt | Plugin and MCP server | Tools |
+|---|---|---|---|
+| `ase` (default) | `/ase:ase-repo-review -c HEAD -S LOW` | the ASE plugin of the surrounding working copy and the `ase` MCP server, both required | read, search, and git, plus `Skill` and `mcp__ase__*` |
+| `baseline` | the text of `src/review/baseline-prompt.md` | neither; a plugin or server that still loads aborts the run | the same rights without `Skill` and `mcp__ase__*` |
+
+Everything else is the same: the copy of the case, the two commits, the model,
+the limits, the scorer. The baseline prompt prescribes the output format the
+scorer reads (a verdict line and a findings table with severity, dimension, and
+file and line), so the baseline is a review *with a format given to it*; the
+comparison measures the skill's reading method, not its output format. No
+baseline has been measured yet; [MEASUREMENTS.md](MEASUREMENTS.md) records the
+condition of every series.
 
 ## How the test works
 
@@ -166,6 +182,10 @@ All values are means over the runs of a configuration.
   only, never the reading.
 - **Ceiling-effect check**: "too easy" if the strongest model finds every
   defect in every run; "adequate" only means no ceiling effect was detected.
+- **Conditions**: thresholds and ceiling-effect check are set for the `ase`
+  condition; a `baseline` group shows every figure, but
+  `threshold not applicable` in place of a verdict and no ceiling-effect
+  statement.
 
 The decoy match rate covers only a few predefined spots: a review that finds all
 defects, leaves the decoys alone, and adds twenty unfounded complaints elsewhere
@@ -191,13 +211,16 @@ node src/review/compare.mjs --case security-refunds
 ### A real measurement
 
 A real measurement costs money. It needs the Claude Code CLI (`claude`) with a
-login, the built `tool/` of the surrounding ASE working copy
-(`cd ../tool && npm start build`), and a commit of the case and the scoring code
-in this repository, so the log can name what produced the figures. One command
-runs the models, compares, and appends the log entry:
+login and a commit of the case and the scoring code in this repository, so the
+log can name what produced the figures. Runs in the `ase` condition also need
+the built `tool/` of the surrounding ASE working copy
+(`cd ../tool && npm start build`); runs in the `baseline` condition need no
+built tool, but a committed `src/review/baseline-prompt.md`. One command runs
+the models, compares, and appends the log entry:
 
 ```
 node src/review/measure.mjs --case security-refunds --confirm-paid
+node src/review/measure.mjs --case security-refunds --conditions ase,baseline --confirm-paid
 ```
 
 By default it runs Opus and Sonnet three times each (`--models`, `--runs`). All
@@ -206,7 +229,17 @@ runs are compared and logged. Fill in the two manual-reading columns at the end
 of the new entry in [MEASUREMENTS.md](MEASUREMENTS.md) by hand, then commit the
 log. `--keep-reference` also copies the runs into `reference/runs/` of the case
 for later re-scoring without cost. `--dry-run` instead writes a preview
-(`log-preview.md`) into the series folder and leaves the log alone.
+(`log-preview.md`) into the series folder and leaves the log alone. Unless
+`--title` names it, the entry is headed by the start date, the case, the
+conditions, and the models, for example
+`2026-11-20: context-returns, ase+baseline, opus, sonnet`.
+
+If the series budget runs out before all planned runs are done, the series is
+neither compared nor logged: `measure.mjs` names the missing runs per condition
+and model, ends with exit code 3, and leaves the completed runs in the series
+folder. A log entry cannot be taken back, and a series with groups of unequal
+size, or with one condition missing, is not a comparison; `--conditions`
+refuses a condition named twice for the same reason.
 
 ### The run pipeline
 
@@ -214,8 +247,8 @@ for later re-scoring without cost. `--dry-run` instead writes a preview
 flowchart TD
     A["build throw-away copy<br/>base commit + change commit"] --> B{"leak check"}
     B -- hit --> E1["error: leak"]
-    B -- clean --> C["claude -p '/ase:ase-repo-review -c HEAD -S LOW'"]
-    C --> D{"init event:<br/>only ASE plugin + ase MCP?"}
+    B -- clean --> C["claude -p with the prompt of the condition<br/>(ase: skill command, baseline: baseline-prompt.md)"]
+    C --> D{"init event: exactly the plugins<br/>and MCP servers of the condition?"}
     D -- no --> E2["error: isolation"]
     D -- yes --> F{"cost / time limit"}
     F -- exceeded --> AB["aborted: cost / time"]
@@ -228,9 +261,12 @@ flowchart TD
     R --> S["compare.mjs: match, score, thresholds<br/>report.json + report.md"]
 ```
 
-The CLI runs with only the ASE plugin of this working copy and only the `ase`
-MCP server; it may read, search, and run `git`, but not edit, write, or go to
-the web. Each run has a cost limit (5 USD) and a time limit (20 minutes); a
+In the `ase` condition the CLI runs with only the ASE plugin of this working
+copy and only the `ase` MCP server; in the `baseline` condition with neither, and
+the isolation check fails a run that loads either. The model may read, search,
+and run `git`, but not edit, write, or go to the web. After a run in the `ase`
+condition the runner kills processes the skill left behind; a baseline run
+starts none and leaves the ASE processes of the machine alone. Each run has a cost limit (5 USD) and a time limit (20 minutes); a
 series has a total budget (30 USD), and a further run starts only while the
 spent amount plus 1.1 × the per-run limit fits. `--budget`, `--timeout-min`, and
 `--total-budget` can only lower these limits for paid runs. Other statuses:
@@ -256,8 +292,11 @@ with `measure.mjs`. The contract of the `review` oracle is in the harness
 `node src/review/<tool>.mjs --help` lists the options of a tool. Beyond the
 above:
 
-- `run.mjs`: `--model`, `--runs`, `--prior-spent`, `--keep` (keep the copy),
+- `run.mjs`: `--condition ase|baseline` (default `ase`), `--model`, `--runs`,
+  `--prior-spent`, `--keep` (keep the copy),
   `--out`, `--replay <file>`, `--simulate unparseable|abort-cost|abort-time|leak`;
+- `measure.mjs`: `--conditions <list>` (default `ase`), `--models`, `--runs`,
+  `--title`, `--keep-reference`;
 - `compare.mjs`: `--out <dir>` (default `results/review/<case>/report/`),
   `--title`, `--journal <file>`, and result folders as arguments; without them
   it scans one level below `results/review/<case>/`, so runs inside a
@@ -290,8 +329,12 @@ node src/review/run.mjs --dry-run --simulate leak
 node src/review/run.mjs --dry-run --replay src/review/testdata/contamination.jsonl
 ```
 
-Dry runs appear in the report as a separate group "(dry run)" and are never
-logged.
+The `normal.jsonl` of a case serves both conditions: a dry run fits the `init`
+event of the transcript to its condition, for `baseline` without the ASE plugin
+and server, so both conditions replay the same review and a dry run shows the
+condition at work, not a different result. A transcript given with `--replay`
+is replayed as it is. Dry runs appear in the report as a separate group
+"(dry run)" and are never logged.
 
 ### Layout
 
@@ -300,6 +343,7 @@ logged.
 | `cases/review/<name>/` | `case.yaml` (harness case, also the source of the change commit message), `fixture/base/`, `fixture/change/`, optional `fixture/change.delete`, `solution/expected.json` (never part of a working copy), `thresholds.json`, `testdata/normal.jsonl` |
 | `cases/review/context-returns/` | additionally `solution/proofs/` (one test per entry), `solution/fixes.json` (one fix per defect), and `reference/runs/` (the six runs of 2026-11-12) |
 | `src/review/*.mjs` | the tools: `check`, `prove`, `run`, `compare`, `measure`, `selftest`, `check-language` |
+| `src/review/baseline-prompt.md` | the whole file is the prompt of the `baseline` condition, whatever its line endings; it must be committed before a paid baseline run |
 | `src/review/lib/` | parser, matching, scoring, list rules, leak check, copy, runner, proofs, report, log; `src/review/lib/common.mjs` holds all paths; the harness uses it through `src/ase-test-review.ts` |
 | `src/review/testdata/` | canned transcripts of the special cases, and six real pilot runs as test data |
 | `docs/review/` | this README, [DESIGN.md](DESIGN.md) (guarantees, decisions, risks; read it before changing fixture, matching, or isolation), [MEASUREMENTS.md](MEASUREMENTS.md) (log, never rewritten), `assets/` |

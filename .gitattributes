@@ -1,2 +1,3 @@
 cases/review/**       text eol=lf
 src/review/testdata/** text eol=lf
+src/review/baseline-prompt.md text eol=lf

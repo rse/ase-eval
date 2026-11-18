@@ -23,6 +23,11 @@ One row per model and series. All automated figures count a finding only if it
 names the file and lines recorded in the expected-results list; values are means
 over the evaluated runs.
 
+- **Configuration**: the measurement condition and the model, written as
+  `condition: model`. `ase` is a run with the ASE plugin, its MCP server, and the
+  skill; `baseline` is the same model without all three. A row that names only a
+  model was measured before the baseline existed and belongs to `ase`. The pilot
+  thresholds are set for `ase`, so a `baseline` row shows `not applicable` there.
 - **Recall overall / obvious**: share of all seeded defects, and of the obvious
   ones, that the review found at the right place.
 - **Decoy match rate**: share of the decoys (correct code that looks suspicious)

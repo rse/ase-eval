@@ -7,9 +7,10 @@ import fs   from "node:fs"
 import path from "node:path"
 
 import { REVIEW_DIR, HARNESS_DIR, git, readJson, sha256, compareIds } from "./common.mjs"
-import { TIERS }       from "./expected.mjs"
-import { parseReview } from "./parser.mjs"
-import { assignAll }   from "./matching.mjs"
+import { TIERS }            from "./expected.mjs"
+import { parseReview }      from "./parser.mjs"
+import { assignAll }        from "./matching.mjs"
+import { conditionUsesAse } from "./runner.mjs"
 
 const OVERVIEW_END = "<!-- overview:end -->"
 const TEXT_MAX     = 220
@@ -34,6 +35,11 @@ const HEADER = [
     "names the file and lines recorded in the expected-results list; values are means",
     "over the evaluated runs.",
     "",
+    "- **Configuration**: the measurement condition and the model, written as",
+    "  `condition: model`. `ase` is a run with the ASE plugin, its MCP server, and the",
+    "  skill; `baseline` is the same model without all three. A row that names only a",
+    "  model was measured before the baseline existed and belongs to `ase`. The pilot",
+    "  thresholds are set for `ase`, so a `baseline` row shows `not applicable` there.",
     "- **Recall overall / obvious**: share of all seeded defects, and of the obvious",
     "  ones, that the review found at the right place.",
     "- **Decoy match rate**: share of the decoys (correct code that looks suspicious)",
@@ -88,6 +94,9 @@ function runMeta (dir) {
     const p    = args.indexOf("-p")
     return {
         started:   m.started_at ?? null,
+        /*  protocols without the condition field were written before the baseline existed  */
+        condition: m.condition ?? "ase",
+        baseline:  m.baseline_prompt ?? null,
         requested: m.model?.requested ?? "unknown",
         reported:  m.model?.reported ?? [],
         endpoint:  m.endpoint?.base_url ?? "default",
@@ -101,10 +110,33 @@ function runMeta (dir) {
     }
 }
 
-/*  configuration label of a model group: reported model ids, else the requested name  */
-function configLabel (runs) {
+/*  default heading of a series: start date, case, conditions, and requested models  */
+export function defaultTitle (dirs, c) {
+    const metas = dirs.map(runMeta)
+    const first = dirs.map((d) => path.basename(d)).sort()[0]
+    const date  = /^(\d{4})(\d{2})(\d{2})T/.exec(first)
+    return `${date ? `${date[1]}-${date[2]}-${date[3]}` : first}: ${c.name}, `
+        + `${uniq(metas.map((m) => m.condition)).join("+")}, ${uniq(metas.map((m) => m.requested)).join(", ")}`
+}
+
+/*  reported model ids of a group, else the requested name  */
+function modelIds (runs) {
     const ids = uniq(runs.flatMap((r) => r.meta.reported))
     return ids.length > 0 ? ids.join(", ") : runs[0].meta.requested
+}
+
+/*  configuration label of a group: the condition, then the model ids  */
+function configLabel (runs) {
+    return `${runs[0].meta.condition}: ${modelIds(runs)}`
+}
+
+/*  the baseline prompt behind a group of runs, or a dash for runs without one  */
+function promptCell (runs) {
+    const used = uniq(runs.map((r) => r.meta.baseline
+        ? `\`${r.meta.baseline.file}\` at ${r.meta.baseline.commit ? `\`${r.meta.baseline.commit.slice(0, 8)}\`` : "no commit"}`
+            + (r.meta.baseline.modified ? " (uncommitted changes)" : "")
+        : null))
+    return used.join("; ") || "–"
 }
 
 /*  findings of a run that match no expected entry  */
@@ -167,11 +199,15 @@ export function renderSection ({ title, dirs, report, expected, c }) {
 
     out.push("### Configuration", "", "| Item | Value |", "|---|---|")
     out.push(`| Case | ${c.name} |`)
+    out.push(`| Conditions | ${uniq(runs.map((r) => r.meta.condition)).join(", ")} |`)
     out.push(`| Runs started (UTC) | ${starts.length ? `${starts[0]} to ${starts[starts.length - 1]}` : "–"} |`)
-    out.push(`| Invocation | ${uniq(runs.map((r) => r.meta.prompt)).map((s) => `\`${s}\``).join(", ") || "–"} |`)
-    out.push(`| Models (requested → reported) | ${groups.map((g) => `${g.runs[0].meta.requested} → ${configLabel(g.runs)}`).join("; ")} |`)
+    /*  the baseline prompt is a whole file; the table names it, the next row dates it  */
+    out.push(`| Invocation | ${uniq(runs.map((r) => r.meta.baseline ? `the text of \`${r.meta.baseline.file}\`` : `\`${r.meta.prompt}\``)).join(", ") || "–"} |`)
+    out.push(`| Baseline prompt | ${promptCell(runs)} |`)
+    out.push(`| Models (requested → reported) | ${groups.map((g) => `${g.runs[0].meta.condition}: ${g.runs[0].meta.requested} → ${modelIds(g.runs)}`).join("; ")} |`)
     out.push(`| Endpoint | ${uniq(runs.map((r) => r.meta.endpoint)).join(", ")} |`)
-    out.push(`| ASE | ${uniq(runs.map((r) => r.meta.ase)).join("; ") || "–"} |`)
+    /*  only the runs that actually loaded ASE say anything about the ASE version  */
+    out.push(`| ASE | ${uniq(runs.filter((r) => conditionUsesAse(r.meta.condition)).map((r) => r.meta.ase)).join("; ") || "–"} |`)
     out.push(`| Claude Code CLI | ${uniq(runs.map((r) => r.meta.cli)).join("; ") || "–"} |`)
     out.push(`| Test case | fixture \`${uniq(runs.map((r) => short(r.meta.fixture))).join("`, `")}\` |`)
     out.push(`| Expected-results list | at run time \`${uniq(runs.map((r) => short(r.meta.expected))).join("`, `")}\`; `

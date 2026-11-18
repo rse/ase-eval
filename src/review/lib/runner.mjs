@@ -7,7 +7,7 @@ import os                    from "node:os"
 import path                  from "node:path"
 import { spawn, spawnSync }  from "node:child_process"
 
-import { REPO_DIR, REVIEW_DIR, CASES_DIR, git } from "./common.mjs"
+import { REPO_DIR, REVIEW_DIR, CASES_DIR, BASELINE_PROMPT_FILE, git } from "./common.mjs"
 
 /*  the fixed skill invocation  */
 export const PROMPT = "/ase:ase-repo-review -c HEAD -S LOW"
@@ -20,16 +20,80 @@ export const ALLOWED_TOOLS = [
 ]
 export const DISALLOWED_TOOLS = [ "Edit", "Write", "NotebookEdit", "WebFetch", "WebSearch" ]
 
-/*  MCP configuration with exactly the ASE server  */
-export function mcpConfig () {
-    return { mcpServers: { ase: { command: process.execPath, args: [ path.join(REPO_DIR, "tool", "bin", "ase"), "mcp" ] } } }
+/*  the baseline keeps the same rights, minus the skill and the ASE MCP tools  */
+export const BASELINE_ALLOWED_TOOLS = ALLOWED_TOOLS.filter((t) => t !== "Skill" && t !== "mcp__ase__*")
+
+/*  the prompt as the model gets it: the same text whatever line endings the checkout gave the
+    file, and without the line breaks at its end; so the prompt equals the normalized file,
+    not its bytes on disk  */
+export function normalizePrompt (text) {
+    return text.replace(/\r\n?/g, "\n").replace(/\n+$/, "")
+}
+
+/*  the measurement conditions: everything that differs between a run with ASE and a run
+    without it, in one place; the runner itself has one code path (design rationale: DESIGN.md).
+    usesAse says whether a run needs the built tool/, its folder on the PATH, and the
+    clean-up of ASE processes, and whether thresholds and calibration apply to its results;
+    promptFile names a versioned prompt file that must be committed before a paid run  */
+export const CONDITIONS = {
+    ase: {
+        name:             "ase",
+        usesAse:          true,
+        prompt:           () => PROMPT,
+        promptFile:       null,
+        pluginDir:        path.join(REPO_DIR, "plugin"),
+        mcpServers:       () => ({ ase: { command: process.execPath, args: [ path.join(REPO_DIR, "tool", "bin", "ase"), "mcp" ] } }),
+        allowedTools:     ALLOWED_TOOLS,
+        expectedPlugins:  [ "ase" ],
+        expectedServers:  [ "ase" ],
+        allowedRepoPaths: [ path.join(REPO_DIR, "plugin"), path.join(REPO_DIR, "tool") ]
+    },
+    baseline: {
+        name:             "baseline",
+        usesAse:          false,
+        prompt:           () => normalizePrompt(fs.readFileSync(BASELINE_PROMPT_FILE, "utf8")),
+        promptFile:       BASELINE_PROMPT_FILE,
+        pluginDir:        null,
+        mcpServers:       () => ({}),
+        allowedTools:     BASELINE_ALLOWED_TOOLS,
+        expectedPlugins:  [],
+        expectedServers:  [],
+        allowedRepoPaths: []
+    }
+}
+export const CONDITION_NAMES = Object.keys(CONDITIONS)
+export const DEFAULT_CONDITION = "ase"
+
+/*  resolve a condition name to its specification; throws for an unknown name  */
+export function conditionSpec (name = DEFAULT_CONDITION) {
+    const c = CONDITIONS[name]
+    if (c === undefined)
+        throw new Error(`unknown condition "${name}" (known: ${CONDITION_NAMES.join(", ")})`)
+    return { ...c, prompt: c.prompt() }
+}
+
+/*  whether a condition uses ASE; a name no record knows comes from a protocol written
+    by another version of the benchmark and counts as a run with ASE, like the protocols
+    written before the baseline existed  */
+export function conditionUsesAse (name) {
+    return CONDITIONS[name]?.usesAse ?? true
+}
+
+/*  whether the ASE tool of this working copy is built; only a run with ASE starts it  */
+export function toolBuilt () {
+    return fs.existsSync(path.join(REPO_DIR, "tool", "dst", "ase.js"))
+}
+
+/*  MCP configuration of a condition: exactly the ASE server, or no server at all  */
+export function mcpConfig (spec = conditionSpec()) {
+    return { mcpServers: spec.mcpServers() }
 }
 
 /*  command-line arguments of the claude invocation  */
-export function claudeArgs ({ model, budget, mcpConfigFile = "{ase.json}" }) {
+export function claudeArgs ({ model, budget, mcpConfigFile = "{ase.json}" }, spec = conditionSpec()) {
     return [
-        "-p", PROMPT,
-        "--plugin-dir", path.join(REPO_DIR, "plugin"),
+        "-p", spec.prompt,
+        ...(spec.pluginDir === null ? [] : [ "--plugin-dir", spec.pluginDir ]),
         "--model", model,
         "--output-format", "stream-json",
         "--verbose",
@@ -39,7 +103,7 @@ export function claudeArgs ({ model, budget, mcpConfigFile = "{ase.json}" }) {
         "--strict-mcp-config",
         "--mcp-config", mcpConfigFile,
         "--permission-mode", "dontAsk",
-        "--allowedTools", ...ALLOWED_TOOLS,
+        "--allowedTools", ...spec.allowedTools,
         "--disallowedTools", ...DISALLOWED_TOOLS
     ]
 }
@@ -60,14 +124,17 @@ function findGitBash (env) {
     return candidates.find((c) => fs.existsSync(c)) ?? null
 }
 
-/*  environment of the child process: no inherited session or endpoint variables  */
-export function childEnv ({ baseUrl = null, authTokenEnv = null, base = process.env, platform = process.platform } = {}) {
+/*  environment of the child process: no inherited session or endpoint variables; the ASE
+    tool folder leads the PATH unless the condition runs without ASE  */
+export function childEnv ({ baseUrl = null, authTokenEnv = null, toolOnPath = true, base = process.env, platform = process.platform } = {}) {
     const env = { ...base }
     for (const name of Object.keys(env))
         if (/^(CLAUDE|ANTHROPIC_|npm_)/i.test(name) && name !== "CLAUDE_CODE_GIT_BASH_PATH")
             delete env[name]
-    const pathKey = Object.keys(env).find((k) => k.toUpperCase() === "PATH") ?? "PATH"
-    env[pathKey] = path.join(REPO_DIR, "tool", "bin") + path.delimiter + (env[pathKey] ?? "")
+    if (toolOnPath) {
+        const pathKey = Object.keys(env).find((k) => k.toUpperCase() === "PATH") ?? "PATH"
+        env[pathKey] = path.join(REPO_DIR, "tool", "bin") + path.delimiter + (env[pathKey] ?? "")
+    }
     if (platform === "win32" && !env.CLAUDE_CODE_GIT_BASH_PATH) {
         const bash = findGitBash(env)
         if (bash)
@@ -133,27 +200,51 @@ export function isBuiltinPlugin (p) {
     return typeof p === "object" && p !== null && (p.path === "builtin" || /@builtin$/.test(p.source ?? ""))
 }
 
-/*  isolation check of the init event: built-in CLI plugins are
-    allowed (and logged), any other plugin besides "ase" and any MCP server besides "ase" is not  */
-export function checkInit (event) {
+/*  isolation check of the init event, in both directions: built-in CLI plugins are allowed
+    (and logged), every plugin and MCP server the condition expects must be there, and
+    nothing else may be  */
+export function checkInit (event, spec = conditionSpec()) {
     const problems = []
     const plugins  = Array.isArray(event.plugins) ? event.plugins : []
     const name     = (p) => typeof p === "string" ? p : p.name
     for (const p of plugins)
-        if (name(p) !== "ase" && !isBuiltinPlugin(p))
+        if (!spec.expectedPlugins.includes(name(p)) && !isBuiltinPlugin(p))
             problems.push(`foreign plugin loaded: ${name(p)}`)
-    if (!plugins.some((p) => name(p) === "ase"))
-        problems.push("ASE plugin not loaded")
+    for (const want of spec.expectedPlugins)
+        if (!plugins.some((p) => name(p) === want))
+            problems.push(`${want.toUpperCase()} plugin not loaded`)
     const servers = Array.isArray(event.mcp_servers) ? event.mcp_servers : []
     for (const s of servers)
-        if (s.name !== "ase")
+        if (!spec.expectedServers.includes(s.name))
             problems.push(`foreign MCP server loaded: ${s.name}`)
-    const ase = servers.find((s) => s.name === "ase")
-    if (!ase)
-        problems.push("ASE MCP server missing")
-    else if (ase.status !== undefined && ase.status !== "connected")
-        problems.push(`ASE MCP server not connected: ${ase.status}`)
+    for (const want of spec.expectedServers) {
+        const s = servers.find((x) => x.name === want)
+        if (!s)
+            problems.push(`${want.toUpperCase()} MCP server missing`)
+        else if (s.status !== undefined && s.status !== "connected")
+            problems.push(`${want.toUpperCase()} MCP server not connected: ${s.status}`)
+    }
     return problems
+}
+
+/*  the init event a dry run shows for a condition: built-in plugins and every entry the
+    condition expects stay as they are, an expected one that is missing is added, and
+    everything else is dropped; so the canned transcript of one condition serves all of them  */
+export function conformInit (event, spec = conditionSpec()) {
+    const plugins = Array.isArray(event.plugins)     ? event.plugins     : []
+    const servers = Array.isArray(event.mcp_servers) ? event.mcp_servers : []
+    const name    = (p) => typeof p === "string" ? p : p.name
+    return {
+        ...event,
+        plugins: [
+            ...plugins.filter((p) => spec.expectedPlugins.includes(name(p)) || isBuiltinPlugin(p)),
+            ...spec.expectedPlugins.filter((want) => !plugins.some((p) => name(p) === want)).map((want) => ({ name: want }))
+        ],
+        mcp_servers: [
+            ...servers.filter((s) => spec.expectedServers.includes(s.name)),
+            ...spec.expectedServers.filter((want) => !servers.some((s) => s.name === want)).map((want) => ({ name: want, status: "connected" }))
+        ]
+    }
 }
 
 /*  PIDs and command lines of running ASE processes of this working copy (R3)  */
@@ -208,15 +299,15 @@ function toolStrings (input) {
     return out
 }
 
-/*  contamination check of all tool calls: any access to the benchmark itself or
-    to the ASE repository outside of plugin/ and tool/ (which the run legitimately uses)  */
-export function checkContamination (events) {
+/*  contamination check of all tool calls: any access to the benchmark itself or to the ASE
+    repository outside the paths the condition legitimately uses (none for the baseline)  */
+export function checkContamination (events, spec = conditionSpec()) {
     const problems = []
     /*  normalize Windows and Git Bash forms ("C:\x", "C:/x", "/c/x") to "c:/x"  */
     const norm     = (p) => p.replace(/\\/g, "/").toLowerCase().replace(/(^|[\s"'=(])\/([a-z])\//g, "$1$2:/")
     const bench    = [ norm(REVIEW_DIR), norm(CASES_DIR) ]
     const repo     = norm(REPO_DIR)
-    const allowed  = [ norm(path.join(REPO_DIR, "plugin")), norm(path.join(REPO_DIR, "tool")) ]
+    const allowed  = spec.allowedRepoPaths.map(norm)
     for (const ev of events) {
         const content = ev?.message?.content
         if (ev.type !== "assistant" || !Array.isArray(content))

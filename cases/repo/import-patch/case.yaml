@@ -1,0 +1,24 @@
+skill: ase-repo-import
+args: "patches/currency.patch"
+runs: 1
+timeoutSec: 600
+budget: { maxUsd: 2.50 }
+fixture:
+  git: true
+  setup: setup.sh
+oracles:
+  - notErrored: true
+  - regex:
+      in: output
+      match:
+        - "IMPORTED"
+  - check:
+      label: "the local default rate 19 survived and the currency option arrived"
+      command: "grep -q 'rate = 19' invoice/cli.py && grep -q -- '--currency=' invoice/cli.py && ! grep -rqE '^(<<<<<<<|>>>>>>>)' invoice && ! ls invoice/*.rej invoice/*.orig 2>/dev/null | grep -q ."
+  - check:
+      label: "the import left the changes uncommitted"
+      command: "test $(git rev-list --count HEAD) -eq 3"
+  - exec:
+      command:   "python3 -m invoice.cli 2x9.99 --currency=chf"
+      reference: "printf '2 x 9.99\\nSubtotal: 19.98\\nTax (19%%): 3.80\\nTotal: 23.78\\nCurrency: CHF\\n'"
+      stdin: [ "" ]

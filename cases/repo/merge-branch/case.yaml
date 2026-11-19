@@ -1,0 +1,22 @@
+skill: ase-repo-merge
+args: "--mode squash feature/discount"
+runs: 1
+timeoutSec: 600
+budget: { maxUsd: 2.50 }
+fixture:
+  git: true
+  setup: setup.sh
+oracles:
+  - notErrored: true
+  - regex:
+      in: output
+      match:
+        - "MERGED"
+  - check:
+      label: "master holds the discount feature as exactly one new (squash) commit"
+      command: "test \"$(git rev-parse --abbrev-ref HEAD)\" = master && grep -q 'def discount' invoice/calc.py && grep -q 'discount_percent' invoice/calc.py && test $(git rev-list --count ase-test-base..master) -eq 2 && test $(git rev-list --merges --count ase-test-base..master) -eq 0"
+  - check:
+      label: "the working tree is clean and the license section survived"
+      command: "test -z \"$(git status --porcelain --untracked-files=no)\" && grep -q 'MIT' README.md"
+  - suite:
+      dir: suite

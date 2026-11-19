@@ -1,0 +1,23 @@
+#   the gateway behind the sandboxes offers no web search backend, so the
+#   research has to degrade to its source-artifact grounding and report the
+#   missing Web part honestly instead of inventing Web findings
+skill: ase-task-research
+args: "csvparse: which CSV parser fits our import, given the current code"
+runs: 1
+timeoutSec: 900
+budget: { maxUsd: 3.00 }
+fixture:
+  git: true
+  files: fixture/tree
+  lifecycle: solo
+  tasks:
+    - fixture/TASK-csvparse.md
+oracles:
+  - regex:
+      in: output
+      match:
+        - "import\\.js|split"
+        - "no search backend|ERROR|[Ww]eb research|not available|unavailable"
+  - rubric:
+      file: rubric.md
+      threshold: 0.7

@@ -1,0 +1,21 @@
+skill: ase-repo-task
+args: "--commit HEAD shipping:"
+runs: 1
+timeoutSec: 600
+budget: { maxUsd: 2.50 }
+fixture:
+  git: true
+  setup: setup.sh
+  lifecycle: solo
+oracles:
+  - notErrored: true
+  - taskStore:
+      id: shipping
+      exists: true
+      bodyMatch: "SPECIFICATION[\\s\\S]*DESIGN[\\s\\S]*VERIFICATION"
+  - gitDiff: { empty: true }
+  - similar:
+      expected: expected-plan.md
+      in: taskBody
+      id: shipping
+      threshold: 0.6

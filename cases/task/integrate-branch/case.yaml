@@ -1,0 +1,23 @@
+skill: ase-task-integrate
+args: "--mode squash shipping"
+runs: 1
+timeoutSec: 900
+budget: { maxUsd: 3.00 }
+fixture:
+  git: true
+  setup: setup.sh
+  lifecycle: solo
+  tasks:
+    - fixture/TASK-shipping.md
+oracles:
+  - notErrored: true
+  - regex:
+      in: output
+      match:
+        - "MERGED"
+  - check:
+      label: "master holds the shipping feature as one squash commit, license kept"
+      command: "test \"$(git rev-parse --abbrev-ref HEAD)\" = master && grep -q 'shipping=0' invoice/calc.py && grep -q -- '--shipping=' invoice/cli.py && grep -q MIT README.md && test $(git rev-list --count ase-test-base..master) -eq 1 && test $(git rev-list --merges --count ase-test-base..master) -eq 0"
+  - taskStore: { id: shipping, exists: true }
+  - suite:
+      dir: suite

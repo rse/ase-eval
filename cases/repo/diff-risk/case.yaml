@@ -1,0 +1,21 @@
+skill: ase-repo-diff
+args: "--coherence --risk --blast"
+runs: 1
+timeoutSec: 600
+budget: { maxUsd: 2.50 }
+fixture:
+  git: true
+  setup: setup.sh
+oracles:
+  - notErrored: true
+  - gitDiff:
+      changed: [ invoice/calc.py, README.md ]
+      unchanged: [ invoice/render.py, invoice/cli.py ]
+  - regex:
+      in: output
+      match:
+        - "tax\\(|tax\\b"
+        - "grand_total|render"
+  - rubric:
+      file: rubric.md
+      threshold: 0.7

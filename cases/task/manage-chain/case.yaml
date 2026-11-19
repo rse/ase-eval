@@ -1,0 +1,61 @@
+#   a realistic task-management session on a seeded store: pick the current
+#   task, view it, rename it, assign it, estimate all tasks, and delete an
+#   obsolete one -- each stage a separate skill
+stages:
+  - skill: ase-task-id
+    args: "beta"
+    timeoutSec: 240
+    budget: { maxUsd: 1.00 }
+    oracles:
+      - regex:
+          in: output
+          match:
+            - "beta"
+  - skill: ase-task-view
+    args: "beta"
+    timeoutSec: 240
+    budget: { maxUsd: 1.00 }
+    oracles:
+      - regex:
+          in: output
+          match:
+            - "Command-Line Flags for the Report Generator"
+            - "parseArgs"
+  - skill: ase-task-rename
+    args: "beta report-cli-flags"
+    timeoutSec: 240
+    budget: { maxUsd: 1.00 }
+    oracles:
+      - taskStore: { id: report-cli-flags, exists: true }
+  - skill: ase-task-assign
+    args: "report-cli-flags: alice"
+    timeoutSec: 240
+    budget: { maxUsd: 1.00 }
+  - skill: ase-task-estimate
+    args: "--all"
+    timeoutSec: 600
+    budget: { maxUsd: 2.00 }
+  - skill: ase-task-delete
+    args: "gamma"
+    timeoutSec: 240
+    budget: { maxUsd: 1.00 }
+runs: 1
+fixture:
+  git: true
+  lifecycle: solo
+  tasks:
+    - fixture/TASK-alpha.md
+    - fixture/TASK-beta.md
+    - fixture/TASK-gamma.md
+oracles:
+  - notErrored: true
+  - taskStore: { id: report-cli-flags, exists: true, titleMatch: "Command-Line Flags" }
+  - taskStore: { id: beta, exists: false }
+  - taskStore: { id: gamma, exists: false }
+  - taskStore: { id: alpha, exists: true }
+  - check:
+      label: "report-cli-flags is assigned to alice"
+      command: "grep -rqi 'alice' .ase/task/ && grep -ril 'alice' .ase/task/ | grep -q report-cli-flags"
+  - check:
+      label: "the remaining tasks carry a T-shirt effort"
+      command: "for t in alpha report-cli-flags; do grep -Eq '^Effort: *(XS|S|M|L|XL)\\b' .ase/task/TASK-$t.md || exit 1; done"

@@ -1,0 +1,39 @@
+#   rewriting a verbose epic-sized plan: condense its wording, reboot it from
+#   scratch, and dissect it into domain-wise sub-tasks
+stages:
+  - skill: ase-task-condense
+    args: "--next DONE webshop"
+    timeoutSec: 480
+    budget: { maxUsd: 2.00 }
+    oracles:
+      - textMetric: { in: file, file: .ase/task/TASK-webshop.md, maxChars: 3000 }
+  - skill: ase-task-reboot
+    args: "--next DONE webshop"
+    timeoutSec: 600
+    budget: { maxUsd: 2.50 }
+    oracles:
+      - taskStore: { id: webshop, exists: true, bodyMatch: "search" }
+  - skill: ase-task-dissect
+    args: "--max-parts 3 webshop: split along search, checkout, and back-office reporting"
+    timeoutSec: 900
+    budget: { maxUsd: 3.50 }
+runs: 1
+fixture:
+  git: true
+  lifecycle: solo
+  tasks:
+    - fixture/TASK-webshop.md
+oracles:
+  - notErrored: true
+  - check:
+      label: "2 to 3 sub-task plans next to the epic"
+      command: "n=$(ls .ase/task/TASK-*.md | grep -v TASK-webshop.md | wc -l); test $n -ge 2 -a $n -le 3"
+  - check:
+      label: "the sub-tasks cover search, checkout, and reporting"
+      command: "f=$(ls .ase/task/TASK-*.md | grep -v TASK-webshop.md); grep -qil 'search' $f && grep -qil 'checkout' $f && grep -qilE 'report|stock' $f"
+  - check:
+      label: "every sub-task plan has the WHAT, HOW, and verification sections"
+      command: "for f in $(ls .ase/task/TASK-*.md | grep -v TASK-webshop.md); do grep -q 'SPECIFICATION' $f && grep -q 'DESIGN' $f && grep -qE 'VERIFICATION' $f || exit 1; done"
+  - check:
+      label: "the sub-tasks together keep the key requirements of the epic"
+      command: "cat $(ls .ase/task/TASK-*.md | grep -v TASK-webshop.md) > /tmp/ase-parts.$$; for p in 'pagina' '[Gg]uest' 'CSV' '[Ll]ow.?[Ss]tock|threshold' 'tsvector|[Ff]ull.?[Tt]ext' 'postal|[Pp]ostal'; do grep -Eq \"$p\" /tmp/ase-parts.$$ || { echo missing $p; exit 1; }; done"

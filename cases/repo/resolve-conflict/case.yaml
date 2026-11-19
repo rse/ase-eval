@@ -1,0 +1,22 @@
+skill: ase-repo-resolve
+args: ""
+runs: 1
+timeoutSec: 600
+budget: { maxUsd: 2.50 }
+fixture:
+  git: true
+  setup: setup.sh
+oracles:
+  - notErrored: true
+  - regex:
+      in: output
+      match:
+        - "RESOLVED"
+  - check:
+      label: "no conflict markers and no unmerged paths remain"
+      command: "! grep -rqE '^(<<<<<<<|=======|>>>>>>>)' invoice && test -z \"$(git ls-files -u)\""
+  - check:
+      label: "the merge was concluded (merge commit on master)"
+      command: "test ! -f .git/MERGE_HEAD && test $(git rev-list --merges --count ase-test-base..HEAD) -eq 1"
+  - suite:
+      dir: suite

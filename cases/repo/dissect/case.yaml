@@ -1,0 +1,16 @@
+skill: ase-repo-dissect
+args: "--max-parts 3"
+runs: 1
+timeoutSec: 900
+budget: { maxUsd: 3.50 }
+fixture:
+  git: true
+  setup: setup.sh
+oracles:
+  - notErrored: true
+  - check:
+      label: "2 to 3 additional Git worktrees exist"
+      command: "n=$(git worktree list | wc -l); test $n -ge 3 -a $n -le 4"
+  - check:
+      label: "each concern in exactly one part, original working copy untouched"
+      command: "bash \"$CASE_DIR/check-parts.sh\""

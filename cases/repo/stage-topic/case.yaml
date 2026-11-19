@@ -1,0 +1,22 @@
+skill: ase-repo-stage
+args: "the rejection of negative tax rates"
+runs: 1
+timeoutSec: 600
+budget: { maxUsd: 2.50 }
+fixture:
+  git: true
+  setup: setup.sh
+oracles:
+  - notErrored: true
+  - check:
+      label: "the index holds the negative-rate validation of calc.py and cli.py"
+      command: "git diff --cached | grep -q 'must not be negative' && git diff --cached --name-only | sort | tr '\\n' ' ' | grep -q 'invoice/calc.py invoice/cli.py'"
+  - check:
+      label: "no logging hunk is staged"
+      command: "! git diff --cached | grep -Eq '^\\+.*(logging|log\\.debug|getLogger)'"
+  - check:
+      label: "the logging hunks stay unstaged in the working tree"
+      command: "git diff | grep -q 'log.debug' && git diff | grep -q 'basicConfig'"
+  - check:
+      label: "nothing was committed"
+      command: "test $(git rev-list --count HEAD) -eq 2"

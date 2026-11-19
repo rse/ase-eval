@@ -1,0 +1,35 @@
+#   finishing a staged feature: record it in the ChangeLog, then craft the
+#   commit message for the staged change set (incl. the new ChangeLog entry)
+stages:
+  - skill: ase-repo-changelog
+    args: ""
+    timeoutSec: 480
+    budget: { maxUsd: 2.00 }
+    oracles:
+      - gitDiff: { changed: [ CHANGELOG.md ] }
+  - skill: ase-repo-commit
+    args: ""
+    timeoutSec: 480
+    budget: { maxUsd: 2.00 }
+runs: 1
+fixture:
+  git: true
+  setup: setup.sh
+oracles:
+  - notErrored: true
+  - gitDiff:
+      changed: [ CHANGELOG.md, invoice/calc.py ]
+      mustMatch: [ "[Dd]iscount|DISCOUNT" ]
+  - check:
+      label: "the ChangeLog entry mentions the discount in the topmost section"
+      command: "awk '/^[0-9]+\\.[0-9]+\\.[0-9]+/{n++} n<=1' CHANGELOG.md | grep -qi discount"
+  - check:
+      label: "the session did not commit (commit message only)"
+      command: "test $(git rev-list --count HEAD) -eq 2"
+  - regex:
+      in: output
+      match:
+        - "[Dd]iscount|DISCOUNT"
+  - rubric:
+      file: rubric.md
+      threshold: 0.7

@@ -11,6 +11,7 @@ import { query } from "@anthropic-ai/claude-agent-sdk"
 import type { Sandbox }   from "./ase-test-sandbox.js"
 import { pricingCallCost, pricingCost } from "./ase-test-pricing.js"
 import { outageWait, pause }            from "./ase-test-outage.js"
+import { GATEWAY_FAILURE }              from "./ase-test-report.js"
 import type { ModelUsage } from "./ase-test-pricing.js"
 
 /*  the hard timeout of a single completion, so a hung endpoint or a wedged agent
@@ -95,7 +96,7 @@ const llmTextRetried = async (sandbox: Sandbox, model: string,
         }
         catch (err) {
             const message = err instanceof Error ? err.message : String(err)
-            if (!TRANSIENT_FAILURE.test(message))
+            if (!TRANSIENT_FAILURE.test(message) && !GATEWAY_FAILURE.test(message))
                 throw err
             if (attempt >= 3)
                 throw new Error(`gateway: ${message}`, { cause: err })

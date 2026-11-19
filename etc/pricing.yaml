@@ -26,6 +26,16 @@ models:
     "qwen.qwen3-235b-a22b-2507-v1:0":
         inUsdPerM:      0.22
         outUsdPerM:     0.88
+    #   the reference models (judge, simulator, and the Opus runner): the agent
+    #   tool prices them itself, so these entries only price the live usage of
+    #   an aborted session as its lower bound (Anthropic first-party list prices)
+    "eu.anthropic.claude-opus-5-5":
+        inUsdPerM:      4.00
+        outUsdPerM:     20.00
+        cacheReadUsdPerM: 0.20
+    "eu.anthropic.claude-sonnet-5":
+        inUsdPerM:      2.00
+        outUsdPerM:     10.00
     #   TODO: fill in from the gateway price list
     #   "global.moonshotai.kimi-k3.1":  { inUsdPerM: ..., outUsdPerM: ... }
     #   "global.openai.gpt-6-astra":    { inUsdPerM: ..., outUsdPerM: ... }

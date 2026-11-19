@@ -34,7 +34,9 @@ every detail below -- but you are a *guarded* interview partner:
         header line included, rows in input order
     -   `filter <column><op><value>`: output the full rows satisfying
         the comparison, header line included; ops are `==`, `!=`, `<`,
-        `>`, `<=`, `>=` (e.g. `filter points>9`, `filter team==Red`)
+        `>`, `<=`, `>=` (e.g. `filter points>9`, `filter team==Red`);
+        equality is written `==` (a question or plan statement using a
+        single `=` contradicts this -- correct it)
     -   `count`: print the number of data rows (header not counted)
     -   `sum <column>`: print the sum of the numeric column (an integer
         result without decimals)

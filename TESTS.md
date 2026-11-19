@@ -282,6 +282,16 @@ sessions use the automatic permission mode of the agent tool.
     end) is an infrastructure error (`gateway`, `ended amid API retries`),
     which marks a gateway outage and is retried after the outage pause; an
     `api_retry` never counts as progress of the stall watchdog.
+-   A *gateway slowdown* (the gateway streaming far below its normal
+    throughput for every model at once) is a gateway error, too: a session
+    whose last 3 minutes with stream deltas averaged below
+    `$ASE_TEST_SLOW_CPS` chars/s (default `20`) notes itself once a minute
+    on the shared slowdown board `<outage file>.slow`, and a timeout or
+    stall of a session which ended that slow, while at least 3 sessions of
+    all runners noted themselves within the last 5 minutes, is reported as
+    `ended in a gateway slowdown (<n> chars/s)`, marks a gateway outage, and
+    is retried. A single slow session (a slow model) never suffices.
+    `result.json` records `slowStream` and `slowCps`.
 -   After 3 consecutive infrastructure errors (other than gateway
     outages), the workers pause before scheduling further runs (60 s,
     doubling up to 300 s).
@@ -293,8 +303,8 @@ sessions use the automatic permission mode of the agent tool.
     sets to `results/.outage-<timestamp>`, else `<results>/.outage`):
     60 s, doubling per consecutive outage up to 300 s, plus a jitter;
     every attempt waits for its end, and the first ordinary run resets
-    the streak. A transient error (gateway, API, simulator) is retried
-    only after at least 30 s plus a jitter.
+    the streak. A transient error (gateway, API, simulator, stall) is
+    retried only after at least 30 s plus a jitter.
 -   Every infrastructure error carries its kind (`infraKind` in the
     summary, `⚠ infra (<kind>)` in the console, `+N infra (kinds)` in
     the comparison): `gateway`, `api`, `mcp`, `sim`, `stall`, `eval`, or
@@ -313,7 +323,8 @@ sessions use the automatic permission mode of the agent tool.
     infrastructure error and retried, too. An API refusal (e.g. HTTP 403
     for an inaccessible model) is an infrastructure error, retried only
     for HTTP 429 and 5xx. A simulator or judge completion is retried up
-    to twice itself on a timeout, HTTP 429/5xx, or a network error (after
+    to twice itself on a timeout, HTTP 429/5xx, a network error, or a
+    gateway failure like `Couldn't load settings from Cloud gateway` (after
     the outage pause and 30 s plus a jitter); a still failing simulator is
     an infrastructure error (`gateway` for such transient causes, else
     `sim`) and the run is retried. A failed evaluation
@@ -333,10 +344,18 @@ sessions use the automatic permission mode of the agent tool.
     was no valid JSON (`__unparsedToolInput`, e.g. tool-call markup of the
     model leaking through the gateway) the diagnostic `toolInputUnparsed`.
 -   A session stuck in a *tool loop* -- the very same tool call (incl.
-    sub-agents) `$ASE_TEST_LOOP_MAX` times (default `12`), or 25 fruitless
-    tool results (errors or empty outputs) in a row -- is aborted as a
-    model failure (`tool loop: …`, `looped` in `result.json`), never
-    retried. Passing runs reach at most 5 resp. 4 of them.
+    sub-agents) `$ASE_TEST_LOOP_MAX` times (default `12`), 25 fruitless
+    tool results (errors or empty outputs) in a row, or more than
+    `$ASE_TEST_MAX_TOOL_CALLS` tool calls at all (default `150`, catching
+    loops of ever slightly varied calls) -- is aborted as a model failure
+    (`tool loop: …`, `looped` in `result.json`), never retried. Passing runs
+    reach at most 5, 4, resp. 48 of them.
+-   The cost of an aborted session is a lower bound: the live usages of
+    the main thread are priced from `etc/pricing.yaml` (which lists the
+    Anthropic reference models, too, for this lower bound only), while the
+    usages of its sub-agents arrive only with the final result message, so
+    such a run is marked `lower bound` in the console and
+    `costLowerBound` in `result.json` and the summary.
 -   `summary.json` is rewritten after every finished run (`aborted:
     "incomplete"` until the end), and an interrupt (SIGINT/SIGTERM)
     aborts all live sessions, tears down their sandboxes, and writes the

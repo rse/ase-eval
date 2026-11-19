@@ -306,7 +306,7 @@ function toolStrings (input) {
     holds third-party packages and no benchmark answers  */
 const inNodeModules = (n, repo) => {
     const rest = n.split(repo).slice(1)
-    return rest.length > 0 && rest.every((tail) => /^\/(?:[^\s"']*\/)?node_modules\//.test(tail))
+    return rest.length > 0 && rest.every((tail) => /^\/(?:[^\s"']*\/)?node_modules(?:[/\s"';]|$)/.test(tail))
 }
 
 export function checkContamination (events, spec = conditionSpec()) {

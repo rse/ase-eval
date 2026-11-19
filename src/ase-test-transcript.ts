@@ -140,6 +140,9 @@ export const transcriptFinish = async (transcript: Transcript, caze: TestCase, s
         apiRetries: result.apiRetries,
         looped:    result.looped,
         unparsedInputs: result.unparsedInputs,
+        slowStream: result.slowStream,
+        slowCps:   Math.round(result.slowCps * 10) / 10,
+        costLowerBound: result.costLowerBound,
         failure:   result.failure,
         oracles,
         ...(caze.staged ? { stages } : {})

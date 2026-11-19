@@ -322,6 +322,10 @@ check("isolation: unconnected ASE MCP server is detected", checkInit({ plugins: 
     check("contamination: a look into a node_modules/ directory of the repository is fine",
         checkContamination([ bash(`ls ${path.join(REPO_DIR, "node_modules", "typescript", "lib")}`) ]).length === 0
         && checkContamination([ bash(`ls ${path.join(REPO_DIR, "node_modules", "typescript")}`) ], conditionSpec("baseline")).length === 0)
+    check("contamination: a node_modules directory of the repository without a trailing slash is fine",
+        checkContamination([ bash(`for root in /tmp/x/project/node_modules ${path.join(REPO_DIR, "node_modules")}; ` +
+            "do test -f \"$root/typescript/lib/typescript.js\"; done") ]).length === 0
+        && checkContamination([ bash(`ls ${path.join(REPO_DIR, "node_modules_x")}`) ]).length > 0)
     check("contamination: node_modules/ does not excuse another repository path in the same call",
         checkContamination([ bash(`ls ${path.join(REPO_DIR, "node_modules")} ${path.join(REPO_DIR, "README.md")}`) ]).length > 0
         && checkContamination([ bash(`grep -r x ${REPO_DIR}`) ]).length > 0

@@ -455,6 +455,7 @@ const main = async (): Promise<void> => {
     await Promise.all(children)
     draw(true)
     fs.rmSync(outageFile, { force: true })
+    fs.rmSync(`${outageFile}.slow`, { force: true })
 
     /*  step 7: refresh the comparison report over all results  */
     console.log("")

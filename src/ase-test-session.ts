@@ -4,7 +4,8 @@
 **  Licensed under Apache 2.0 <https://spdx.org/licenses/Apache-2.0>
 */
 
-import * as path from "node:path"
+import * as crypto from "node:crypto"
+import * as path   from "node:path"
 
 import { query } from "@anthropic-ai/claude-agent-sdk"
 import type { Options, SDKUserMessage } from "@anthropic-ai/claude-agent-sdk"
@@ -17,6 +18,7 @@ import { SimulatorError }            from "./ase-test-simulator.js"
 import { pricingCost, pricingCallCost, pricingBudgetScale } from "./ase-test-pricing.js"
 import type { CostBasis, ModelUsage } from "./ase-test-pricing.js"
 import { GATEWAY_FAILURE }           from "./ase-test-report.js"
+import { slowNote, slowConfirmed }   from "./ase-test-outage.js"
 
 /*  the abort controllers of all live sessions, so an interrupt of the
     harness can abort them all and still tear down their sandboxes  */
@@ -44,8 +46,10 @@ export type SessionRecord = {
     HTTP 504 of the gateway), "stallAt"/"abortAt" when the stall watchdog fired
     resp. the session was aborted, "sdkHung" a session whose SDK did not end
     after the abort, "looped" one aborted by the tool-loop stop, "unparsedInputs"
-    the tool calls whose input was no valid JSON, and "costBasis" tells how
-    "costUsd" was priced)  */
+    the tool calls whose input was no valid JSON, "slowStream"/"slowCps" one
+    ending in a confirmed gateway slowdown resp. its last streamed chars per
+    second, "costLowerBound" an aborted session whose sub-agent costs are
+    missing, and "costBasis" tells how "costUsd" was priced)  */
 export type SessionResult = {
     messages:     Record<string, any>[]
     output:       string[]
@@ -75,6 +79,9 @@ export type SessionResult = {
     sdkHung:      boolean
     looped:       boolean
     unparsedInputs: number
+    slowStream:   boolean
+    slowCps:      number
+    costLowerBound: boolean
     costBasis:    CostBasis
 }
 
@@ -97,7 +104,7 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         costUsd: 0, costAccurate: true, turns: 0, errored: false, crashed: false, timedOut: false, stalled: false, failure: "",
         stopReason: "", apiStatus: null, mcpFailed: false, simFailed: false, budgetHit: false, apiFlaky: "",
         apiRetries: 0, apiRetryText: "", lastApiRetryAt: 0, stallAt: "", abortAt: "", sdkHung: false,
-        looped: false, unparsedInputs: 0, costBasis: "sdk"
+        looped: false, unparsedInputs: 0, slowStream: false, slowCps: 0, costLowerBound: false, costBasis: "sdk"
     }
     const prompt = stage.skill !== "" ? skillPrompt(stage.skill, stage.args) : stage.prompt
 
@@ -348,9 +355,13 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         thread or a sub-agent) "loopMax" times, or receiving "loopErrMax" fruitless
         tool results (errors or empty outputs) in a row, is stuck in a loop and
         aborted as a model failure, instead of burning its budget until the timeout
-        (passing runs reach at most 5 resp. 4 of them)  */
+        (passing runs reach at most 5 resp. 4 of them), or making more than
+        "toolMax" tool calls at all, which catches the loops of ever slightly varied
+        calls (passing runs make at most 48 of them)  */
     const loopMax    = Number(process.env.ASE_TEST_LOOP_MAX ?? "12")
     const loopErrMax = 25
+    const toolMax    = Number(process.env.ASE_TEST_MAX_TOOL_CALLS ?? "150")
+    let   toolCalls  = 0
     const loopCalls  = new Map<string, number>()
     let   loopErrors = 0
     let   loopFailure = ""
@@ -361,10 +372,13 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
                 const input = JSON.stringify(block.input ?? {})
                 if (input.includes("__unparsedToolInput"))
                     result.unparsedInputs += 1
+                toolCalls += 1
+                if (Number.isFinite(toolMax) && toolMax > 0 && toolCalls >= toolMax && loopFailure === "")
+                    loopFailure = `tool loop: ${toolCalls} tool calls (cap ${toolMax})`
                 const key   = `${String(block.name)} ${input}`
                 const count = (loopCalls.get(key) ?? 0) + 1
                 loopCalls.set(key, count)
-                if (count >= loopMax && loopFailure === "")
+                if (Number.isFinite(loopMax) && loopMax > 0 && count >= loopMax && loopFailure === "")
                     loopFailure = `tool loop: "${String(block.name)}" called ${count}x with the same input`
             }
             else if (msg.type === "user" && block.type === "tool_result") {
@@ -376,7 +390,7 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
                     loopFailure = `tool loop: ${loopErrors} fruitless tool results (errors or empty outputs) in a row`
             }
         }
-        if (loopFailure !== "" && !result.looped && Number.isFinite(loopMax) && loopMax > 0) {
+        if (loopFailure !== "" && !result.looped) {
             result.looped = true
             abort.abort()
         }
@@ -398,11 +412,36 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         streamChars += text.length
         streamTail   = (streamTail + text).slice(-200)
     }
-    let subagentMsgs = 0
-    let streamCall   = { id: "", model: "" }
+    let subagentMsgs  = 0
+    let subagentTotal = 0
+    let streamCall    = { id: "", model: "" }
+
+    /*  the slow-stream watch: the streamed chars per second of the last minutes
+        with stream deltas, where a session streaming below "slowCps" on average
+        over its last 3 such minutes (within 5 minutes) notes itself on the shared
+        slowdown board, as a gateway slowdown hits many sessions at once  */
+    const slowCps  = Number(process.env.ASE_TEST_SLOW_CPS ?? "20")
+    const slowKey  = crypto.randomUUID()
+    const slowRing: { at: number, cps: number }[] = []
+    const slowMean = (now: number): number | null => {
+        const recent = slowRing.filter((e) => now - e.at <= 6 * 60 * 1000).slice(-3)
+        return recent.length < 3 ? null : recent.reduce((sum, e) => sum + e.cps, 0) / recent.length
+    }
     const heartbeat = setInterval(() => {
         if (Object.keys(streamCounts).length === 0 && subagentMsgs === 0)
             return
+        const deltas = Object.entries(streamCounts)
+            .filter(([ key ]) => key.startsWith("content_block_delta/"))
+            .reduce((sum, [ , n ]) => sum + n, 0)
+        if (deltas >= 1) {
+            const now = Date.now()
+            slowRing.push({ at: now, cps: streamChars / 60 })
+            if (slowRing.length > 5)
+                slowRing.shift()
+            const mean = slowMean(now)
+            if (mean !== null && mean < slowCps)
+                slowNote(slowKey)
+        }
         record.onMessage({
             type: "harness", subtype: "stream_heartbeat",
             counts: streamCounts, chars: streamChars, tail: streamTail, subagent: subagentMsgs
@@ -448,8 +487,10 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
             }
             record.onMessage(msg as Record<string, any>)
             result.messages.push(msg as Record<string, any>)
-            if ((msg as { parent_tool_use_id?: string | null }).parent_tool_use_id)
-                subagentMsgs += 1
+            if ((msg as { parent_tool_use_id?: string | null }).parent_tool_use_id) {
+                subagentMsgs  += 1
+                subagentTotal += 1
+            }
             loopWatch(msg as Record<string, any>)
             if (msg.type === "system" && msg.subtype === "init") {
                 result.sessionId = msg.session_id
@@ -578,6 +619,18 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         result.costUsd   = liveUsd
         result.costBasis = "table"
     }
+    /*  a timeout or stall amid a slow stream, confirmed by other sessions as a
+        gateway slowdown, says nothing about the model  */
+    if (result.timedOut || result.stalled) {
+        const mean = slowMean(Date.now())
+        result.slowCps    = mean ?? 0
+        result.slowStream = mean !== null && mean < slowCps && slowConfirmed(Date.now() - 5 * 60 * 1000)
+    }
+
+    /*  the costs of an aborted session with sub-agents are a mere lower bound,
+        as the sub-agent usages arrive only with the final result message  */
+    if (!result.costAccurate && subagentTotal > 0)
+        result.costLowerBound = true
     if (result.looped) {
         result.errored      = true
         result.costAccurate = false

@@ -29,6 +29,7 @@ export type RunOutcome = {
     costUsd:    number
     bookedUsd:  number
     costBasis:  string
+    costLowerBound?: boolean
     durationMs: number
     failure:    string
     infraKind:  InfraKind
@@ -92,7 +93,8 @@ export const reportRun = (name: string, outcome: RunOutcome, failHint = ""): voi
             outcome.outcome === "skipped" ? chalk.yellow("−") : chalk.red("⚠")
     const booked = Math.abs(outcome.bookedUsd - outcome.costUsd) >= 0.00005 ?
         ` (booked $${outcome.bookedUsd.toFixed(4)})` : ""
-    const basis  = outcome.costBasis !== "" && outcome.costBasis !== "sdk" ? ` ${outcome.costBasis}` : ""
+    const basis  = (outcome.costBasis !== "" && outcome.costBasis !== "sdk" ? ` ${outcome.costBasis}` : "") +
+        (outcome.costLowerBound === true ? " lower bound" : "")
     const info = `(${prettyMs(outcome.durationMs)}, $${outcome.costUsd.toFixed(4)}${booked}${basis}` +
         `${outcome.model !== "" ? `, ${outcome.model}` : ""})`
     console.log(`${mark} ${name} run ${outcome.run} ${chalk.dim(info)}`)
@@ -131,6 +133,7 @@ export const summaryWrite = (resultsDir: string, cases: CaseOutcome[],
                 costUsd:    run.costUsd,
                 bookedUsd:  run.bookedUsd,
                 costBasis:  run.costBasis,
+                ...(run.costLowerBound === true ? { costLowerBound: true } : {}),
                 durationMs: run.durationMs,
                 failure:    run.failure,
                 infraKind:  run.infraKind,

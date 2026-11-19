@@ -250,6 +250,14 @@ const endedInApiRetries = (r: SessionResult): boolean =>
     (r.timedOut || r.stalled || r.stopReason === "error_max_turns") && r.lastApiRetryAt > 0
     && Date.now() - r.lastApiRetryAt <= GATEWAY_RETRY_WINDOW_MS
 
+/*  the gateway cause of a session end, if any: the agent tool's own API retries,
+    resp. a slow stream confirmed by other sessions as a gateway slowdown (a
+    timeout or stall then says nothing about the model either)  */
+const gatewayEnd = (r: SessionResult): string | null =>
+    endedInApiRetries(r) ? `ended amid API retries (${r.apiRetries}x, last: ${r.apiRetryText})` :
+        (r.timedOut || r.stalled) && r.slowStream ? `ended in a gateway slowdown (${r.slowCps.toFixed(1)} chars/s)` :
+            null
+
 /*  the number of "ase_task_save" calls of one session beyond which it is
     considered a save loop (diagnostic only)  */
 const SAVE_LOOP_MAX = 5
@@ -366,11 +374,15 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
             sdkHung:      last.sdkHung,
             looped:       last.looped,
             unparsedInputs: results.reduce((sum, r) => sum + r.unparsedInputs, 0),
+            slowStream:   last.slowStream,
+            slowCps:      last.slowCps,
+            costLowerBound: results.some((r) => r.costLowerBound),
             costBasis:    ([ "unpriced", "table", "sdk" ] as CostBasis[])
                 .find((basis) => results.some((r) => r.costBasis === basis)) ?? "sdk"
         }
         outcome.costUsd   = result.costUsd
         outcome.costBasis = result.costBasis
+        outcome.costLowerBound = result.costLowerBound
         outcome.model     = result.model
 
         /*  an infrastructure failure is a crash without any skill output -- a
@@ -396,12 +408,13 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
             outcome.infraKind = GATEWAY_FAILURE.test(outcome.failure) ? "gateway" :
                 result.mcpFailed ? "mcp" : last.simFailed ? "sim" : last.stalled ? "stall" : api ? "api" : "crash"
 
-            /*  a stall (or a crash) amid the agent tool's own API retries is a
-                gateway error, which pauses all workers before the retry  */
-            if (outcome.infraKind !== "gateway" && endedInApiRetries(last)) {
+            /*  a stall (or a crash) amid the agent tool's own API retries or in a
+                gateway slowdown is a gateway error, which pauses all workers before
+                the retry  */
+            const cause = gatewayEnd(last)
+            if (outcome.infraKind !== "gateway" && cause !== null) {
                 outcome.infraKind = "gateway"
-                outcome.failure   = `${caze.staged ? `${where} ` : "session "}ended amid API retries ` +
-                    `(${last.apiRetries}x, last: ${last.apiRetryText}): ${last.failure}`
+                outcome.failure   = `${caze.staged ? `${where} ` : "session "}${cause}: ${last.failure}`
             }
             outcome.oracles = diagnostics
             retry = !api || last.apiStatus === 429 || last.apiStatus! >= 500
@@ -410,14 +423,16 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
         else if (caze.staged && last.errored) {
             /*  an errored stage of a staged case fails the run without evaluating
                 the top-level oracles, as the remaining stages were skipped, unless
-                it ended amid the agent tool's own API retries (a gateway error)  */
+                it ended amid the agent tool's own API retries or in a gateway
+                slowdown (a gateway error)  */
             outcome.outcome = "fail"
             outcome.failure = `${where} errored: ${last.failure}`
             outcome.oracles = diagnostics
-            if (endedInApiRetries(last)) {
+            const cause = gatewayEnd(last)
+            if (cause !== null) {
                 outcome.outcome   = "error"
                 outcome.infraKind = "gateway"
-                outcome.failure   = `${where} ended amid API retries (${last.apiRetries}x, last: ${last.apiRetryText}): ${last.failure}`
+                outcome.failure   = `${where} ${cause}: ${last.failure}`
                 retry             = true
             }
             await transcriptFinish(transcript, caze, sandbox, result, "", diagnostics, false, stages)
@@ -492,13 +507,14 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
                 outcome.failure = result.failure
 
                 /*  a failed run whose session saw a gateway or server error (e.g. a
-                    sub-agent hit by an HTTP 503) says nothing about the model, so it is
-                    an infrastructure error and retried, while a passed run stays passed  */
-                if (outcome.outcome === "fail" && endedInApiRetries(last)) {
+                    sub-agent hit by an HTTP 503, or a timeout in a gateway slowdown) says
+                    nothing about the model, so it is an infrastructure error and
+                    retried, while a passed run stays passed  */
+                const cause = gatewayEnd(last)
+                if (outcome.outcome === "fail" && cause !== null) {
                     outcome.outcome   = "error"
                     outcome.infraKind = "gateway"
-                    outcome.failure   = `session ended amid API retries (${last.apiRetries}x, ` +
-                        `last: ${last.apiRetryText}): ${result.failure}`
+                    outcome.failure   = `session ${cause}: ${result.failure}`
                     retry             = true
                 }
                 else if (outcome.outcome === "fail" && result.apiFlaky !== "") {
@@ -567,9 +583,10 @@ const executeRun = async (caze: TestCase, run: number): Promise<RunOutcome> => {
         if (aborted !== "" || spentUsd() > ceilingUsd)
             break
 
-        /*  a transient error is retried only after a delay (at least 30 s plus a
-            jitter, resp. the end of a gateway outage pause), never immediately  */
-        const delay = ([ "gateway", "api", "sim" ] as InfraKind[]).includes(current.outcome.infraKind) ?
+        /*  a transient error (incl. a stall) is retried only after a delay (at least
+            30 s plus a jitter, resp. the end of a gateway outage pause), never
+            immediately  */
+        const delay = ([ "gateway", "api", "sim", "stall" ] as InfraKind[]).includes(current.outcome.infraKind) ?
             30 * 1000 + Math.random() * 15 * 1000 : 0
         console.log(chalk.yellow(`⚠ ${caze.name} run ${run}: ${current.outcome.failure} -- ` +
             `retrying (attempt ${attempt + 1}/${gateway ? 3 : 2})` +
@@ -767,8 +784,10 @@ console.log(`running ${work.length} run(s) of ${cases.length} case(s) ` +
         (endpoint !== "https://api.anthropic.com" ? `, endpoint: ${endpoint}` : "") +
         `, results: ${resultsDir})`))
 await Promise.all(Array.from({ length: Math.min(jobs, work.length) }, (_v, index) => worker(index)))
-if (!outageShared)
+if (!outageShared) {
     fs.rmSync(outageFile, { force: true })
+    fs.rmSync(`${outageFile}.slow`, { force: true })
+}
 lockRelease()
 
 /*  aggregate the outcomes per case (pass@k) and report  */

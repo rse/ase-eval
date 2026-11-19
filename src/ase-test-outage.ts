@@ -75,3 +75,38 @@ export const outageWait = async (): Promise<void> => {
     if (ms > 0)
         await pause(ms)
 }
+
+/*  the shared slowdown board (next to the outage file): a session streaming
+    below the slow threshold notes itself once a minute, and a slowdown counts
+    as confirmed (a gateway issue, not a slow model) only once several distinct
+    sessions of all runners noted themselves within the same window  */
+const slowFile = (): string => outageConfig.file === "" ? "" : `${outageConfig.file}.slow`
+export const slowNote = (key: string): void => {
+    const file = slowFile()
+    if (file === "")
+        return
+    try {
+        fs.mkdirSync(path.dirname(file), { recursive: true })
+        fs.appendFileSync(file, `${Date.now()} ${key}\n`, "utf8")
+    }
+    catch (_err) {
+        /*  a lost note only weakens the confirmation  */
+    }
+}
+export const slowConfirmed = (sinceMs: number, minSessions = 3): boolean => {
+    const file = slowFile()
+    if (file === "")
+        return false
+    try {
+        const keys = new Set<string>()
+        for (const line of fs.readFileSync(file, "utf8").split("\n")) {
+            const [ at, key ] = line.split(" ")
+            if (key !== undefined && Number(at) >= sinceMs)
+                keys.add(key)
+        }
+        return keys.size >= minSessions
+    }
+    catch (_err) {
+        return false
+    }
+}

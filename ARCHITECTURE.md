@@ -95,7 +95,9 @@ settings from Cloud gateway`, HTTP 5xx) pauses all workers of all
 runners through a shared outage file, and a timeout, stall, crash, or turn-cap
 hit amid the agent tool's own API retries (`system/api_retry`) is a gateway
 error, too, as is a simulator or judge completion still failing after its own
-two retries. A ping-only stream gets a longer stall limit than a silent one. An SDK which does not end within 15 s after an abort is left behind. A SIGINT/SIGTERM aborts all live
+two retries, and a timeout or stall in a gateway slowdown confirmed by at
+least 3 slow sessions of all runners. A ping-only stream gets a longer stall
+limit than a silent one. An SDK which does not end within 15 s after an abort is left behind. A SIGINT/SIGTERM aborts all live
 sessions, tears down their sandboxes, and writes the final summary.
 
 ## 4. One Run (Attempt)

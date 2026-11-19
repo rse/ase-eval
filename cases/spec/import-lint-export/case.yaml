@@ -1,0 +1,41 @@
+#   bootstrapping a specification: import meeting notes into the (empty)
+#   SpecBook specification, lint and fix it, and export it as HTML
+stages:
+  - skill: ase-sync-import
+    args: "--target SPEC notes/requirements-meeting.txt"
+    timeoutSec: 1500
+    budget: { maxUsd: 6.00 }
+    oracles:
+      - gitDiff: { mustMatch: [ "[Bb]ooking", "[Nn]o-[Ss]how" ] }
+  - skill: ase-spec-lint
+    args: "--auto"
+    timeoutSec: 1200
+    budget: { maxUsd: 5.00 }
+  - skill: ase-sync-export
+    args: "--output docs/spec.html"
+    timeoutSec: 600
+    budget: { maxUsd: 2.00 }
+runs: 1
+fixture:
+  git: true
+  files: fixture/tree
+  setup: setup.sh
+oracles:
+  - notErrored: true
+  - check:
+      label: "the specification lints without errors"
+      command: "ase spec lint > /tmp/ase-spec-lint.$$ 2>&1; s=$?; ! grep -q '\\[ERROR\\]' /tmp/ase-spec-lint.$$ && test $s -eq 0"
+      timeoutSec: 120
+  - check:
+      label: "the functional requirements cover booking limits, cancellation, and no-show release"
+      command: "f=$(ls docs/specbook/*Functional-Requirements*.md); grep -qiE '15.?min' $f && grep -qiE '4 hours|four hours|4h' $f && grep -qi 'cancel' $f && grep -qiE 'no-show|check.?in' $f"
+  - check:
+      label: "the glossary defines Room, Booking, and No-Show"
+      command: "f=$(ls docs/specbook/*Domain-Glossary*.md); grep -q 'TERM: Room' $f && grep -q 'TERM: Booking' $f && grep -qiE 'TERM: No-?Show' $f"
+  - fileExists: docs/spec.html
+  - check:
+      label: "the HTML export contains the requirements"
+      command: "grep -qi 'booking' docs/spec.html && grep -qi 'cancel' docs/spec.html"
+  - rubric:
+      file: rubric.md
+      threshold: 0.7

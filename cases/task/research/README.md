@@ -1,8 +1,7 @@
 # task/research
 
-`ase-task-research` on a task about choosing a CSV parser. The gateway
-behind the sandboxes has no web search backend (see `meta/search-nobackend`),
-so the case checks the honest degradation: correct grounding in
-`src/import.js`, an explicit note about the missing Web research, and no
-invented Web findings. Replace by a full research case once a backend
-exists.
+`ase-task-research` on a task about choosing a CSV parser, in an
+environment without any web search backend (see `meta/search-nobackend`):
+the skill must stop with `ERROR: no search backend available`, must not
+present invented findings or URLs, and must leave the plan unchanged.
+Replace by a full research case once a backend exists.

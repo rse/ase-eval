@@ -17,6 +17,6 @@ oracles:
         - "ase-repo-changelog"
         - "ase-repo-diff"
         - "ase-repo-commit"
-  - rubric:
-      file: rubric.md
-      threshold: 0.7
+  - check:
+      label: "the generated workflow orders lint first and the commit message last, with the middle steps concurrent"
+      command: "bash \"$CASE_DIR/check-order.sh\" .claude/skills/release-prep/SKILL.md"

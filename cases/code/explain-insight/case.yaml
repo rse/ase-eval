@@ -1,0 +1,33 @@
+stages:
+  - skill: ase-code-explain
+    args: "invoice/calc.py"
+    timeoutSec: 600
+    budget: { maxUsd: 2.50 }
+    oracles:
+      - regex:
+          in: output
+          match: [ "WHAT", "WHY", "ANALOGY", "CRUXES", "GOTCHAS" ]
+  - skill: ase-code-insight
+    args: "invoice/"
+    timeoutSec: 600
+    budget: { maxUsd: 2.50 }
+    oracles:
+      - regex:
+          in: output
+          match: [ "PROJECT ABSTRACT", "PROJECT AUTHOR", "SOURCE CHURN", "MODULE STRUCTURE" ]
+runs: 1
+fixture:
+  git: true
+  setup: setup.sh
+oracles:
+  - notErrored: true
+  - gitDiff: { empty: true }
+  - regex:
+      in: output
+      match:
+        - "Dana Developer"
+        - "Sam Smith"
+        - "ROUND_HALF_EVEN|half-even|banker"
+  - rubric:
+      file: rubric.md
+      threshold: 0.7

@@ -1,0 +1,1 @@
+{ "name": "@orders/db", "version": "1.0.0", "dependencies": { "@orders/core": "1.0.0" } }

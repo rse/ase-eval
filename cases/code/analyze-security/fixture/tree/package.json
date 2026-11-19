@@ -1,0 +1,8 @@
+{
+    "name": "notes-service",
+    "version": "1.2.0",
+    "private": true,
+    "type": "commonjs",
+    "main": "src/server.js",
+    "dependencies": {}
+}

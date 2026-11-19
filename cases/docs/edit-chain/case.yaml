@@ -1,0 +1,46 @@
+#   a documentation pass over one guide: proofread it, refine its wording,
+#   shorten it to a word budget, and distill its key points
+stages:
+  - skill: ase-docs-proofread
+    args: "--auto docs/ONBOARDING.md"
+    timeoutSec: 600
+    budget: { maxUsd: 2.50 }
+    oracles:
+      - regex:
+          in: file
+          file: docs/ONBOARDING.md
+          not: [ "basicaly", "recieve", "localy", "dont ", "this windows" ]
+  - skill: ase-docs-refine
+    args: "--auto docs/ONBOARDING.md"
+    timeoutSec: 600
+    budget: { maxUsd: 2.50 }
+  - skill: ase-docs-shorten
+    args: "--auto --words 260 docs/ONBOARDING.md"
+    timeoutSec: 600
+    budget: { maxUsd: 2.50 }
+    oracles:
+      - textMetric: { in: file, file: docs/ONBOARDING.md, maxWords: 290 }
+  - skill: ase-docs-distill
+    args: "--top 5 docs/ONBOARDING.md"
+    timeoutSec: 480
+    budget: { maxUsd: 2.00 }
+runs: 1
+fixture:
+  git: true
+  files: fixture/tree
+oracles:
+  - notErrored: true
+  - regex:
+      in: file
+      file: docs/ONBOARDING.md
+      match:
+        - "Node\\.js 22"
+        - "PostgreSQL 16"
+        - "docker compose up -d db"
+        - "[Tt]uesday"
+        - "#backend-help"
+      not: [ "basicaly", "recieve", "localy", "dont ", "this windows" ]
+  - textMetric: { in: file, file: docs/ONBOARDING.md, maxWords: 290 }
+  - rubric:
+      file: rubric.md
+      threshold: 0.7

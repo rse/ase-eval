@@ -1,0 +1,30 @@
+Meeting notes -- room booking service, kick-off (2026-04-14)
+Attendees: product (Mia), facility management (Jonas), dev team
+
+Goal: employees book meeting rooms of the office themselves, instead of
+mailing facility management. First release only for the Vienna office
+(3 floors, 14 rooms).
+
+What people need:
+- see which rooms are free in a time slot, filtered by capacity and by
+  equipment (screen, video conferencing, whiteboard)
+- book a room for a time slot; slots are 15-minute steps, max 4 hours,
+  at most 30 days ahead
+- one person may hold at most 2 bookings at the same time of day (Jonas:
+  people block rooms "just in case")
+- cancel own bookings; facility management can cancel any booking and
+  must give a reason that is mailed to the booker
+- bookings not checked in within 10 minutes after start are released
+  automatically (check-in via a tablet at the door, later; for now a
+  check-in button in the web UI)
+
+Terms (Jonas insists): a "room" is a bookable meeting room; a "desk" is
+NOT part of this; a "booking" is a reservation of one room for one slot by
+one employee; a "no-show" is a booking without check-in.
+
+Non-functional: login with the company SSO (OIDC), the booking page must
+load in under 1 second, data stays in the EU, availability 99.5% during
+office hours (07:00-20:00 local time).
+
+Open: recurring bookings (weekly team meeting) -- not in the first
+release, maybe later.

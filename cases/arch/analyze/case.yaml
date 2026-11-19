@@ -1,0 +1,19 @@
+skill: ase-arch-analyze
+args: "packages/"
+runs: 1
+timeoutSec: 900
+budget: { maxUsd: 3.50 }
+fixture:
+  git: true
+  files: fixture/tree
+oracles:
+  - notErrored: true
+  - gitDiff: { empty: true }
+  - regex:
+      in: output
+      match:
+        - "[Cc]ycl|[Cc]ircular"
+        - "util"
+  - rubric:
+      file: rubric.md
+      threshold: 0.7

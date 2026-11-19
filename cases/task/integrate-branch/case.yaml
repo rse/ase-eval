@@ -14,7 +14,7 @@ oracles:
   - regex:
       in: output
       match:
-        - "MERGED"
+        - "plan integrated"
   - check:
       label: "master holds the shipping feature as one squash commit, license kept"
       command: "test \"$(git rev-parse --abbrev-ref HEAD)\" = master && grep -q 'shipping=0' invoice/calc.py && grep -q -- '--shipping=' invoice/cli.py && grep -q MIT README.md && test $(git rev-list --count ase-test-base..master) -eq 1 && test $(git rev-list --merges --count ase-test-base..master) -eq 0"

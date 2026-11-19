@@ -1,0 +1,23 @@
+skill: ase-code-lint
+args: "--auto src/stats.js"
+runs: 1
+timeoutSec: 900
+budget: { maxUsd: 3.50 }
+fixture:
+  git: true
+  files: fixture/tree
+oracles:
+  - notErrored: true
+  - gitDiff:
+      changed: [ src/stats.js ]
+      unchanged: [ check.js ]
+  - exec:
+      command:   "node check.js"
+      reference: "node reference.js"
+      stdin: [ "" ]
+  - check:
+      label: "the input-mutating sort of median() is gone"
+      command: "node -e 'const s=require(\"./src/stats\"); const a=[3,1,2]; s.median(a); process.exit(a.join()===\"3,1,2\"?0:1)'"
+  - rubric:
+      file: rubric.md
+      threshold: 0.7

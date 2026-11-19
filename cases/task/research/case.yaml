@@ -1,6 +1,6 @@
 #   the gateway behind the sandboxes offers no web search backend, so the
-#   research has to degrade to its source-artifact grounding and report the
-#   missing Web part honestly instead of inventing Web findings
+#   research must stop with the missing-backend error, without inventing
+#   findings and without touching the plan
 skill: ase-task-research
 args: "csvparse: which CSV parser fits our import, given the current code"
 runs: 1
@@ -16,8 +16,10 @@ oracles:
   - regex:
       in: output
       match:
-        - "import\\.js|split"
-        - "no search backend|ERROR|[Ww]eb research|not available|unavailable"
-  - rubric:
-      file: rubric.md
-      threshold: 0.7
+        - "ERROR: no search backend available"
+      not:
+        - "https?://"
+        - "RESEARCH REPORT|Findings:"
+  - check:
+      label: "the plan was left unchanged"
+      command: "cmp -s .ase/task/TASK-csvparse.md \"$CASE_DIR/fixture/TASK-csvparse.md\""

@@ -1,0 +1,23 @@
+skill: ase-code-analyze
+args: "--security src/"
+runs: 1
+timeoutSec: 900
+budget: { maxUsd: 3.50 }
+fixture:
+  git: true
+  files: fixture/tree
+oracles:
+  - notErrored: true
+  - gitDiff: { empty: true }
+  - regex:
+      in: output
+      match:
+        - "db\\.js"
+        - "[Ii]njection"
+        - "files\\.js"
+        - "[Tt]raversal|\\.\\./"
+        - "config\\.js"
+        - "[Ss]ecret|[Hh]ard-?coded|[Cc]redential|API key|mailApiKey"
+  - rubric:
+      file: rubric.md
+      threshold: 0.7

@@ -14,6 +14,5 @@ set -euo pipefail
 #   operate from the directory of this script (the harness directory)
 cd "$(dirname "$0")"
 
-#   run the comparison into results/ by default (a later --out option of
-#   the passed-through options wins), passing through any harness options
-exec node --import tsx src/ase-test-compare.ts --out=results "$@"
+#   run the comparison (into results/ by default), passing through any options
+exec node --import tsx src/ase-test-compare.ts "$@"

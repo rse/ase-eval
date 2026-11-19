@@ -78,7 +78,7 @@ npm start test -- -d --cases='meta/*'             # describe input and oracles o
 ./run_agent_test.sh                               # "ase agent" end-to-end tests
 ./run_uplift_test.sh                              # ASE uplift benchmark incl. comparison (~$15-25)
 ./launch_tests.sh                                 # interactive: pick tests and models, run in parallel
-./generate_comparison.sh                          # compare past runs (free, writes COMPARISON.{md,html})
+./generate_comparison.sh                          # compare past runs (free, writes results/COMPARISON.{md,html})
 ```
 
 ### With a Local LLM (Anthropic-compatible gateway, e.g. LiteLLM)

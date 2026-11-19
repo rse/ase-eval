@@ -462,7 +462,7 @@ prints a cases × models matrix, a case-groups × models matrix
 and a runs-over-time table (timestamp, model, plugin version resp.
 commit, pass counts, cost, duration). It also writes `COMPARISON.md` and
 a self-contained `COMPARISON.html` (sortable tables, pass-rate and cost
-trend charts) into the repository root. The model of a summary is the
+trend charts) into `results/` (`--out <dir>` overrides it). The model of a summary is the
 forced model, else the most frequent per-run model; the version is the
 `pluginVersion` meta field (recorded by the harness from now on), with
 the `pluginCommit` prefix as the fallback for older summaries.

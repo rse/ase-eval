@@ -36,13 +36,14 @@ program
     .description("compare the summaries of multiple ASE skill test harness runs")
     .option("-r, --results <dir>", "results directory to scan for summaries", "results")
     .option("-a, --add <dir...>", "additional run directories (each holding a summary.json)", [])
-    .option("-o, --out <dir>", "directory to write COMPARISON.md and COMPARISON.html into", ".")
+    .option("-o, --out <dir>", "directory to write COMPARISON.md and COMPARISON.html into", "results")
     .parse(process.argv)
 const opts = program.opts<{ results: string, add: string[], out: string }>()
 
 /*  collect the summary files: direct children of the results directory, one
     nesting level deeper (the uplift layout), and the explicitly added dirs  */
 const resultsDir   = path.isAbsolute(opts.results) ? opts.results : path.join(harnessRoot, opts.results)
+const outDir       = path.isAbsolute(opts.out)     ? opts.out     : path.join(harnessRoot, opts.out)
 const summaryFiles = summaryScan(resultsDir, 2)
 for (const dir of opts.add) {
     const file = path.join(dir, "summary.json")
@@ -267,8 +268,8 @@ const md =
     "## Cases × Models\n\n"       + markdownTable(matrixRows(caseNames, byCase, "case"))     + "\n\n" +
     "## Case Groups × Models\n\n" + markdownTable(matrixRows(groupNames, byGroup, "group")) + "\n\n" +
     "## Runs over Time\n\n"            + markdownTable(timeRows)                                 + "\n"
-fs.mkdirSync(opts.out, { recursive: true })
-fs.writeFileSync(path.join(opts.out, "COMPARISON.md"), md)
+fs.mkdirSync(outDir, { recursive: true })
+fs.writeFileSync(path.join(outDir, "COMPARISON.md"), md)
 
 /*  write the HTML report: the same tables (sortable) plus the pass-rate and
     cost trend charts, self-contained and themed for light and dark mode  */
@@ -357,5 +358,5 @@ for (const table of document.querySelectorAll("table"))
 </body>
 </html>
 `
-fs.writeFileSync(path.join(opts.out, "COMPARISON.html"), html)
-console.log(chalk.dim(`written: ${path.join(opts.out, "COMPARISON.md")}, ${path.join(opts.out, "COMPARISON.html")}`))
+fs.writeFileSync(path.join(outDir, "COMPARISON.html"), html)
+console.log(chalk.dim(`written: ${path.join(outDir, "COMPARISON.md")}, ${path.join(outDir, "COMPARISON.html")}`))

@@ -5,7 +5,7 @@
 ##  of the agent tool), then run every selected case with every selected
 ##  model -- one parallel runner per model, each into its own
 ##  results/<timestamp>-<model>/ directory -- with live progress, and
-##  finally refresh COMPARISON.md and COMPARISON.html
+##  finally refresh results/COMPARISON.md and results/COMPARISON.html
 ##
 ##  Usage: ./launch_tests.sh [launcher options] [harness options]
 ##

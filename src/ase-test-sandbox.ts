@@ -181,8 +181,22 @@ const sandboxPopulate = async (caze: TestCase, root: string): Promise<Sandbox> =
             for (const [ bin, file ] of Object.entries(bins))
                 await fs.promises.symlink(path.join(source, file), path.join(modules, ".bin", bin), "file")
         }
-        if (caze.fixture.git)
-            await fs.promises.appendFile(path.join(project, ".git", "info", "exclude"), "node_modules/\n", "utf8")
+        if (caze.fixture.git) {
+            /*  the build output (the "outDir" of a TypeScript project), which a
+                session running the then working build emits, is invisible, too  */
+            const ignores = [ "node_modules/" ]
+            try {
+                const tsconfig = JSON.parse(await fs.promises.readFile(path.join(project, "tsconfig.json"), "utf8")) as
+                    { compilerOptions?: { outDir?: string } }
+                const outDir = tsconfig.compilerOptions?.outDir?.replace(/^\.\//, "").replace(/\/+$/, "") ?? ""
+                if (outDir !== "" && !outDir.startsWith(".."))
+                    ignores.push(`${outDir}/`)
+            }
+            catch (_err) {
+                /*  no (plain JSON) "tsconfig.json": no build output to hide  */
+            }
+            await fs.promises.appendFile(path.join(project, ".git", "info", "exclude"), ignores.map((e) => `${e}\n`).join(""), "utf8")
+        }
     }
 
     /*  pre-start the ASE service of the project, so the MCP server of the plugin

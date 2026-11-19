@@ -17,9 +17,10 @@ import type { OracleResult } from "./ase-test-oracle.js"
     failed simulator, a stalled session, a failed evaluation, or a plain crash  */
 export type InfraKind = "gateway" | "api" | "mcp" | "sim" | "stall" | "eval" | "crash" | ""
 
-/*  the failure texts of a gateway outage resp. a transient server error  */
+/*  the failure texts of a gateway outage resp. a transient server error (incl.
+    a simulator or judge completion which still failed after its retries)  */
 export const GATEWAY_FAILURE =
-    /Couldn't load settings from Cloud gateway|API Error: (?:5\d\d|529)\b|Service Temporarily Unavailable|overloaded_error/
+    /Couldn't load settings from Cloud gateway|API Error: (?:5\d\d|529)\b|Service Temporarily Unavailable|overloaded_error|\bgateway: /
 
 /*  the outcome of one run of a case  */
 export type RunOutcome = {

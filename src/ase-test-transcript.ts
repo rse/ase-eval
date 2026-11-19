@@ -44,9 +44,11 @@ const brief = (value: unknown, max = 160): string => {
 }
 
 /*  open the transcript of one run, creating its artifact directory (a retried
-    run gets its own directory, so the attempts' artifacts never interleave)  */
-export const transcriptOpen = (resultsDir: string, caze: TestCase, run: number, retried = false): Transcript => {
-    const dir = path.join(resultsDir, ...caze.name.split("/"), `run-${run}${retried ? "-retry" : ""}`)
+    run gets its own directory per attempt, "-retry" resp. "-retry<n>", so the
+    attempts' artifacts never interleave)  */
+export const transcriptOpen = (resultsDir: string, caze: TestCase, run: number, attempt = 1): Transcript => {
+    const suffix = attempt <= 1 ? "" : attempt === 2 ? "-retry" : `-retry${attempt - 1}`
+    const dir    = path.join(resultsDir, ...caze.name.split("/"), `run-${run}${suffix}`)
     fs.mkdirSync(dir, { recursive: true })
 
     /*  the recorder of the stage <stage> (of a single-skill case only stage 1, unprefixed)  */
@@ -136,6 +138,8 @@ export const transcriptFinish = async (transcript: Transcript, caze: TestCase, s
         abortAt:   result.abortAt,
         sdkHung:   result.sdkHung,
         apiRetries: result.apiRetries,
+        looped:    result.looped,
+        unparsedInputs: result.unparsedInputs,
         failure:   result.failure,
         oracles,
         ...(caze.staged ? { stages } : {})

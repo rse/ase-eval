@@ -191,7 +191,8 @@ A staged case declares `stages` *instead* of `skill`/`promptFile` and
 carries `turns`, `timeoutSec`, `budget`, and `disallowedTools` per stage
 only. Each stage has `skill`, `args`, and optionally `turns`,
 `timeoutSec`, `budget`, `disallowedTools`, and `oracles`. Its `args` may
-reference `{{stage<N>.lastMessage}}` of an earlier stage. All stages run
+reference `{{stage<N>.lastMessage}}` of an earlier stage (without its
+`⧉ **ASE**` status lines and dialog frame lines). All stages run
 one after the other in the *same* sandbox, each in its own session. The
 stage oracles are *diagnostic* (reported as `stage<N>/<kind>`, marked
 `◦`), the top-level oracles alone decide the verdict, and `suite` is
@@ -226,7 +227,10 @@ sessions use the automatic permission mode of the agent tool.
     output). With an entry in `etc/pricing.yaml`, the harness recomputes
     its cost from the token usage, scales the SDK budget cap up to a
     mere backstop, and aborts the session itself once the table-priced
-    usage exceeds `budget.maxUsd`. A model without an entry is flagged
+    usage exceeds `budget.maxUsd`. Behind a gateway, the assistant
+    messages carry zeroed usages, so the live usage comes from the
+    `message_delta` stream events (main thread only; sub-agent calls are
+    priced from the final result). A model without an entry is flagged
     at startup and as `unpriced` per run.
 -   `--time-factor` scales all timeouts; `launch_tests.sh` sets
     `ASE_TEST_TIME_FACTOR=2` for every non-Anthropic model. The time the
@@ -258,25 +262,33 @@ sessions use the automatic permission mode of the agent tool.
     except a keep-alive `ping`, while thinking (streamed thinking deltas
     and `thinking_tokens` estimates) counts only once it adds up to
     `$ASE_TEST_STALL_MIN_TOKENS` tokens (default `50`), so a stream
-    trickling a few tokens for minutes is caught, too. Every message of
+    trickling a few tokens for minutes is caught, too. A stream of only
+    keep-alive `ping`s (the last one at most 60 s old) proves the gateway
+    alive, e.g. while an upstream delivers a large response only once it
+    is complete, and stalls only after `$ASE_TEST_STALL_PING_SEC` seconds
+    (default `360`, scaled by the time factor), reported as `stall: only
+    keep-alive pings for <n>s`. Every message of
     `transcript.jsonl` carries its receive time as `_receivedAt`. Once a
     minute, a `{"type":"harness","subtype":"stream_heartbeat"}` line records
     the streamed partial messages (counts per event type, characters, and
-    the tail of the streamed text). A stall wins over a later timeout, and
+    the tail of the streamed text, and `subagent`, the messages of
+    sub-agents, which do not stream). A stall wins over a later timeout, and
     `result.json` records `stalled`, `stallAt`, `abortAt`, `sdkHung`, and
     `apiRetries`. An SDK which does not end its stream within 15 s after an
     abort is left behind (`sdkHung`), so no session outlasts its abort.
--   A run which timed out, stalled, or hit the turn cap while the agent tool
-    itself was retrying failed API calls (`system/api_retry`, e.g. after an
-    HTTP 504 of the gateway, the last one at most 180 s before its end) is an
-    infrastructure error (`gateway`) and retried after the outage pause; an
+-   A run which timed out, stalled, crashed, or hit the turn cap while the
+    agent tool itself was retrying failed API calls (`system/api_retry`, e.g.
+    after an HTTP 504 of the gateway, the last one at most 180 s before its
+    end) is an infrastructure error (`gateway`, `ended amid API retries`),
+    which marks a gateway outage and is retried after the outage pause; an
     `api_retry` never counts as progress of the stall watchdog.
 -   After 3 consecutive infrastructure errors (other than gateway
     outages), the workers pause before scheduling further runs (60 s,
     doubling up to 300 s).
 -   A *gateway outage* (`Couldn't load settings from Cloud gateway`,
     `API Error: 5xx`/`529`, `Service Temporarily Unavailable`,
-    `overloaded_error`) pauses *all* workers of *all* runners of a
+    `overloaded_error`, and a simulator or judge completion still failing
+    after its retries, `gateway: …`) pauses *all* workers of *all* runners of a
     launcher (shared through `$ASE_TEST_OUTAGE_FILE`, which the launcher
     sets to `results/.outage-<timestamp>`, else `<results>/.outage`):
     60 s, doubling per consecutive outage up to 300 s, plus a jitter;
@@ -291,15 +303,20 @@ sessions use the automatic permission mode of the agent tool.
     seconds (the launcher sets `20 × runner index`), and worker `i`
     another `i × $ASE_TEST_STAGGER_SEC` seconds (default `10`), so a batch does not open all its sessions at
     the same instant.
--   A run is retried exactly once, into `run-<n>-retry/`, when its
+-   A run is retried once, into `run-<n>-retry/` -- and, once one of its
+    attempts was a gateway error, a second time, into `run-<n>-retry2/`,
+    as an outage can hit both the first attempt and its retry -- when its
     session crashed before the skill produced any output or the attempt
     threw (e.g. the sandbox creation failed), and only while the ceiling
-    is not hit. A timeout is never retried. The reported cost sums both
+    is not hit. A timeout is never retried. The reported cost sums all
     attempts. A session whose ASE MCP server failed to connect is an
     infrastructure error and retried, too. An API refusal (e.g. HTTP 403
     for an inaccessible model) is an infrastructure error, retried only
-    for HTTP 429 and 5xx. A failed simulator (e.g. a completion timeout)
-    is an infrastructure error and retried, too. A failed evaluation
+    for HTTP 429 and 5xx. A simulator or judge completion is retried up
+    to twice itself on a timeout, HTTP 429/5xx, or a network error (after
+    the outage pause and 30 s plus a jitter); a still failing simulator is
+    an infrastructure error (`gateway` for such transient causes, else
+    `sim`) and the run is retried. A failed evaluation
     (e.g. a judge timeout) retries the oracles alone, up to 3 attempts,
     and then reports the run as an infrastructure `error`, never as a
     model failure. A *failed* run whose session saw a gateway or server
@@ -312,7 +329,14 @@ sessions use the automatic permission mode of the agent tool.
     retried with the same model; the summary counts the fallbacks in
     `meta.refFallbacks`.
 -   A session calling `ase_task_save` more than 5 times gets the
-    diagnostic `saveLoop`.
+    diagnostic `saveLoop`, and one with 3 or more tool calls whose input
+    was no valid JSON (`__unparsedToolInput`, e.g. tool-call markup of the
+    model leaking through the gateway) the diagnostic `toolInputUnparsed`.
+-   A session stuck in a *tool loop* -- the very same tool call (incl.
+    sub-agents) `$ASE_TEST_LOOP_MAX` times (default `12`), or 25 fruitless
+    tool results (errors or empty outputs) in a row -- is aborted as a
+    model failure (`tool loop: …`, `looped` in `result.json`), never
+    retried. Passing runs reach at most 5 resp. 4 of them.
 -   `summary.json` is rewritten after every finished run (`aborted:
     "incomplete"` until the end), and an interrupt (SIGINT/SIGTERM)
     aborts all live sessions, tears down their sandboxes, and writes the
@@ -393,7 +417,13 @@ their teardown and still refreshes the comparison. Extra
 options (e.g. `--jobs=6`, `-K`, `--max-cost-usd=50`) are passed through
 to every runner; a `--max-cost-usd` ceiling therefore applies per model
 runner, not to the whole matrix. Afterwards the comparison report is refreshed (see
-below); the exit code is the worst runner exit code.
+below); the exit code is the worst runner exit code. The final verdict per
+model is `FAIL` with any failed case, else `PASS`, noted in yellow as
+`PASS (<n> incomplete, aborted: …)` when cases stayed incomplete or the
+ceiling stopped the runner. The start line of every runner shows the
+endpoint: `ANTHROPIC_BASE_URL`, else the login gateway of
+`~/.claude/settings.json` (`forceLoginGatewayUrl`), as recorded in
+`meta.endpoint`.
 
 Each interactive step can be skipped with a launcher option:
 `--tests <globs>` (comma-separated case globs, resolved like the harness

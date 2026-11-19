@@ -429,7 +429,8 @@ const main = async (): Promise<void> => {
         { cwd: harnessRoot, stdio: "inherit", reject: false })
     /*  the verdict per runner from its summary: a runner whose executed cases
         all passed is a PASS even when the cost ceiling skipped further runs (it
-        exits non-zero), and only an unreadable summary falls back to the exit code  */
+        exits non-zero) or some cases stayed incomplete (both noted), and only an
+        unreadable summary falls back to the exit code  */
     const worst = Math.max(...runners.map((runner) => runner.exitCode ?? 1))
     for (const runner of runners) {
         let verdict = runner.exitCode === 0 ? chalk.green("PASS") : chalk.red("FAIL")
@@ -441,8 +442,13 @@ const main = async (): Promise<void> => {
             const failed  = cases.some((caze) => caze.pass !== true && caze.incomplete !== true
                 && (caze.runs ?? []).some((run) => run.outcome !== "skipped"))
             const aborted = (summary.aborted ?? "") !== ""
+            const missing = cases.filter((caze) => caze.pass !== true && caze.incomplete === true).length
+            const notes   = [
+                ...(missing > 0 ? [ `${missing} incomplete` ] : []),
+                ...(aborted ? [ `aborted: ${summary.aborted}` ] : [])
+            ]
             verdict = failed ? chalk.red("FAIL") :
-                aborted ? chalk.yellow(`PASS (aborted: ${summary.aborted})`) : chalk.green("PASS")
+                notes.length > 0 ? chalk.yellow(`PASS (${notes.join(", ")})`) : chalk.green("PASS")
         }
         catch (_err) {
             /*  keep the exit code based verdict  */

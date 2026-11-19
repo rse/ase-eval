@@ -77,7 +77,10 @@ flowchart TD
     IN -->|no| DONE["Report run"]
     IN -->|yes| CE{"Ceiling hit?"}
     CE -->|yes| DONE
-    CE -->|no| RD["Wait ≥30 s + jitter<br/>(transient errors) and the outage pause"] --> AT2["Attempt 2 into run-n-retry/<br/>(costs of both summed)"] --> DONE
+    CE -->|no| RD["Wait ≥30 s + jitter<br/>(transient errors) and the outage pause"] --> AT2["Attempt 2 into run-n-retry/<br/>(costs of all attempts summed)"]
+    AT2 --> GW{"Gateway error in<br/>attempt 1 or 2, still failing?"}
+    GW -->|no| DONE
+    GW -->|yes| AT3["Attempt 3 into run-n-retry2/"] --> DONE
     DONE --> BK["Book cost: measured (table-priced if unpriced),<br/>or an estimate if inaccurate"]
     BK --> CH{"Sessions + simulator/judge<br/>above the ceiling?"}
     CH --> SW["Rewrite summary.json"]
@@ -89,9 +92,10 @@ A timeout is never retried, as it is the most expensive failure mode.
 A failed evaluation (e.g. a judge timeout) retries only the oracles and
 ends as an infrastructure `error`. A gateway error (e.g. `Couldn't load
 settings from Cloud gateway`, HTTP 5xx) pauses all workers of all
-runners through a shared outage file, and a timeout, stall, or turn-cap hit
-amid the agent tool's own API retries (`system/api_retry`) is a gateway error,
-too. An SDK which does not end within 15 s after an abort is left behind. A SIGINT/SIGTERM aborts all live
+runners through a shared outage file, and a timeout, stall, crash, or turn-cap
+hit amid the agent tool's own API retries (`system/api_retry`) is a gateway
+error, too, as is a simulator or judge completion still failing after its own
+two retries. A ping-only stream gets a longer stall limit than a silent one. An SDK which does not end within 15 s after an abort is left behind. A SIGINT/SIGTERM aborts all live
 sessions, tears down their sandboxes, and writes the final summary.
 
 ## 4. One Run (Attempt)

@@ -10,6 +10,7 @@ import { query } from "@anthropic-ai/claude-agent-sdk"
 
 import type { Sandbox }   from "./ase-test-sandbox.js"
 import { pricingCallCost, pricingCost } from "./ase-test-pricing.js"
+import { outageWait, pause }            from "./ase-test-outage.js"
 import type { ModelUsage } from "./ase-test-pricing.js"
 
 /*  the hard timeout of a single completion, so a hung endpoint or a wedged agent
@@ -79,13 +80,39 @@ const llmTextOnce = async (sandbox: Sandbox, model: string,
     }
 }
 
+/*  whether a completion failure is transient (a timeout, a rate limit, a server
+    error, or a network error), i.e. worth a retry after a pause  */
+const TRANSIENT_FAILURE = /completion timeout|\b(?:429|5\d\d)\b|overloaded|ECONNRESET|ECONNREFUSED|ETIMEDOUT|socket hang up|fetch failed|Connection error/i
+
+/*  a completion retried on transient failures: up to two retries, each after the
+    end of a gateway outage pause and 30 s plus a jitter, where a still failing
+    completion is reported as a gateway error (so it pauses all workers, too)  */
+const llmTextRetried = async (sandbox: Sandbox, model: string,
+    system: string, prompt: string): Promise<string> => {
+    for (let attempt = 1; ; attempt++) {
+        try {
+            return await llmTextOnce(sandbox, model, system, prompt)
+        }
+        catch (err) {
+            const message = err instanceof Error ? err.message : String(err)
+            if (!TRANSIENT_FAILURE.test(message))
+                throw err
+            if (attempt >= 3)
+                throw new Error(`gateway: ${message}`, { cause: err })
+            console.log(chalk.yellow(`⚠ judge/simulator: ${message} -- retrying (attempt ${attempt + 1}/3)`))
+            await outageWait()
+            await pause(30 * 1000 + Math.random() * 15 * 1000)
+        }
+    }
+}
+
 /*  the completion of the simulator and the judge, where a safeguard refusal of the
     reference model (deterministic for the prompt, and frequent for the transcripts
     of weaker models) is repeated once with the fallback reference model  */
 export const llmText = async (sandbox: Sandbox, model: string,
     system: string, prompt: string): Promise<string> => {
     try {
-        return await llmTextOnce(sandbox, model, system, prompt)
+        return await llmTextRetried(sandbox, model, system, prompt)
     }
     catch (err) {
         const fallback = process.env.ASE_TEST_REF_FALLBACK ?? ""
@@ -94,6 +121,6 @@ export const llmText = async (sandbox: Sandbox, model: string,
             throw err
         llmSpend.fallbacks += 1
         console.log(chalk.yellow(`⚠ judge/simulator: safeguards refused "${model}" -- falling back to "${fallback}"`))
-        return llmTextOnce(sandbox, fallback, system, prompt)
+        return llmTextRetried(sandbox, fallback, system, prompt)
     }
 }

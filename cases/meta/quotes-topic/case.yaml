@@ -1,0 +1,10 @@
+skill: ase-meta-quotes
+args: "--count 6 simplicity software design"
+runs: 1
+timeoutSec: 600
+budget: { maxUsd: 2.00 }
+oracles:
+  - notErrored: true
+  - rubric:
+      file: rubric.md
+      threshold: 0.7

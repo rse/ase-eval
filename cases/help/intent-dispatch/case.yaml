@@ -1,0 +1,18 @@
+skill: ase-help-intent
+args: "I have one huge uncommitted change set mixing a bug fix, a refactoring, and a new feature, and I want to split it into separate parts that I can commit one by one"
+runs: 1
+timeoutSec: 480
+budget: { maxUsd: 1.50 }
+turns:
+  simulator: llm
+  persona: persona.md
+  maxTurns: 3
+fixture:
+  git: true
+oracles:
+  - notErrored: true
+  - regex:
+      in: output
+      match:
+        - "ase-repo-dissect"
+  - gitDiff: { empty: true }

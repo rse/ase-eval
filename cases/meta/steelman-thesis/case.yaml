@@ -1,0 +1,15 @@
+skill: ase-meta-steelman
+args: "--count 3 --rounds 2 Code review should be mandatory for every change, including one-line typo fixes."
+runs: 1
+timeoutSec: 600
+budget: { maxUsd: 2.00 }
+oracles:
+  - notErrored: true
+  - regex:
+      in: output
+      match:
+        - "PRO-THESIS"
+        - "FORTIFICATION|ROUND"
+  - rubric:
+      file: rubric.md
+      threshold: 0.7

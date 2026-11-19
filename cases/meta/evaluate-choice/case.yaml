@@ -1,0 +1,17 @@
+skill: ase-meta-evaluate
+args: "Which message broker should a 6-person team use for an order-processing system with about 200 messages per second, at-least-once delivery, and no dedicated operations staff: RabbitMQ, Apache Kafka, or a managed cloud queue like AWS SQS?"
+runs: 1
+timeoutSec: 600
+budget: { maxUsd: 2.00 }
+oracles:
+  - notErrored: true
+  - regex:
+      in: output
+      match:
+        - "BEST ALTERNATIVE"
+        - "RabbitMQ"
+        - "Kafka"
+        - "SQS"
+  - rubric:
+      file: rubric.md
+      threshold: 0.7

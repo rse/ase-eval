@@ -1,0 +1,16 @@
+skill: ase-meta-proximity
+args: "property-based testing"
+runs: 1
+timeoutSec: 480
+budget: { maxUsd: 1.50 }
+oracles:
+  - notErrored: true
+  - regex:
+      in: output
+      match:
+        - "PARENT"
+        - "SIBLINGS"
+        - "CHILDREN"
+  - rubric:
+      file: rubric.md
+      threshold: 0.7

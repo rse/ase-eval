@@ -1,0 +1,40 @@
+#   tailoring ASE for a project: set a project configuration value, define an
+#   option alias and option defaults of a skill, and check the expansion
+stages:
+  - skill: ase-meta-config
+    args: "--scope project set agent.persona journalist"
+    timeoutSec: 300
+    budget: { maxUsd: 1.00 }
+  - skill: ase-meta-alias
+    args: "--scope project set --option ase-code-lint --sec --include=A16 -S HIGH"
+    timeoutSec: 300
+    budget: { maxUsd: 1.00 }
+  - skill: ase-meta-alias
+    args: "--scope project set lint-sec /ase-code-lint --sec"
+    timeoutSec: 300
+    budget: { maxUsd: 1.00 }
+  - skill: ase-meta-alias
+    args: "expand /lint-sec src/"
+    timeoutSec: 300
+    budget: { maxUsd: 1.00 }
+  - skill: ase-meta-config
+    args: "get agent.persona"
+    timeoutSec: 300
+    budget: { maxUsd: 1.00 }
+runs: 1
+fixture:
+  git: true
+oracles:
+  - notErrored: true
+  - check:
+      label: "the project configuration holds the persona"
+      command: "grep -Eq 'persona:[[:space:]]*journalist' .ase/config.yaml"
+  - check:
+      label: "the project aliases hold the option alias and the full alias"
+      command: "grep -q 'lint-sec' .ase/aliases.yaml && grep -q 'A16' .ase/aliases.yaml"
+  - regex:
+      in: output
+      match:
+        - "--include=A16"
+        - "HIGH"
+        - "journalist"

@@ -1,0 +1,15 @@
+#   the sandboxes reach the models through a gateway which offers no web
+#   search backend (no "WebSearch" tool, no search MCP servers), so the skill
+#   must report the missing backend instead of answering from model knowledge
+skill: ase-meta-search
+args: "--services websearch Which Python version introduced the match statement (structural pattern matching), and which PEP specified it?"
+runs: 1
+timeoutSec: 480
+budget: { maxUsd: 1.50 }
+oracles:
+  - regex:
+      in: output
+      match:
+        - "ERROR: no search backend available"
+      not:
+        - "PEP\\s*63[456]"

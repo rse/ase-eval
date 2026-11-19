@@ -1,0 +1,22 @@
+skill: ase-meta-workflow
+args: "--scope local release-prep lint the staged changes with ase-code-lint --staged, then in parallel update the changelog with ase-repo-changelog and summarize the staged diff with ase-repo-diff --risk, and finally propose a commit message with ase-repo-commit"
+runs: 1
+timeoutSec: 900
+budget: { maxUsd: 3.00 }
+fixture:
+  git: true
+oracles:
+  - notErrored: true
+  - fileExists: .claude/skills/release-prep/SKILL.md
+  - regex:
+      in: file
+      file: .claude/skills/release-prep/SKILL.md
+      match:
+        - "^---[\\s\\S]*name:\\s*release-prep"
+        - "ase-code-lint"
+        - "ase-repo-changelog"
+        - "ase-repo-diff"
+        - "ase-repo-commit"
+  - rubric:
+      file: rubric.md
+      threshold: 0.7

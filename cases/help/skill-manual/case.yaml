@@ -1,0 +1,14 @@
+skill: ase-help-skill
+args: "ase-repo-stage"
+runs: 1
+timeoutSec: 300
+budget: { maxUsd: 1.00 }
+oracles:
+  - notErrored: true
+  - regex:
+      in: output
+      match:
+        - "##\\s*NAME"
+        - "##\\s*SYNOPSIS"
+        - "--changelog"
+        - "--commit"

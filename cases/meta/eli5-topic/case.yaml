@@ -1,0 +1,14 @@
+skill: ase-meta-eli5
+args: "eventual consistency in distributed databases"
+runs: 1
+timeoutSec: 480
+budget: { maxUsd: 1.50 }
+oracles:
+  - notErrored: true
+  - regex:
+      in: output
+      match:
+        - "ANALOGY"
+  - rubric:
+      file: rubric.md
+      threshold: 0.7

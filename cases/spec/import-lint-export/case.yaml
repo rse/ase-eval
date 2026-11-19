@@ -27,8 +27,8 @@ oracles:
       command: "ase spec lint > /tmp/ase-spec-lint.$$ 2>&1; s=$?; ! grep -q '\\[ERROR\\]' /tmp/ase-spec-lint.$$ && test $s -eq 0"
       timeoutSec: 120
   - check:
-      label: "the functional requirements cover booking limits, cancellation, and no-show release"
-      command: "f=$(ls docs/specbook/*Functional-Requirements*.md); grep -qiE '15.?min' $f && grep -qiE '4 hours|four hours|4h' $f && grep -qi 'cancel' $f && grep -qiE 'no-show|check.?in' $f"
+      label: "the requirements and domain rules cover booking limits, cancellation, and no-show release"
+      command: "f=$(ls docs/specbook/*Functional-Requirements*.md docs/specbook/*Domain-Rules*.md 2>/dev/null); grep -qiE '15.?min' $f && grep -qiE '4 hours|four hours|4h' $f && grep -qi 'cancel' $f && grep -qiE 'no-show|check.?in' $f"
   - check:
       label: "the glossary defines Room, Booking, and No-Show"
       command: "f=$(ls docs/specbook/*Domain-Glossary*.md); grep -q 'TERM: Room' $f && grep -q 'TERM: Booking' $f && grep -qiE 'TERM: No-?Show' $f"

@@ -1,0 +1,41 @@
+#   working with an existing specification: answer a question from it, add a
+#   requirement to it, and reconcile the outdated README with it
+stages:
+  - skill: ase-spec-activate
+    args: "How long may a single booking last, in which steps are slots booked, and how far ahead can rooms be booked?"
+    timeoutSec: 600
+    budget: { maxUsd: 2.50 }
+    oracles:
+      - regex:
+          in: output
+          match: [ "4 hours|four hours", "15.?min", "30 days" ]
+  - skill: ase-spec-edit
+    args: "-v light add a functional requirement with priority COULD: an employee can book a recurring weekly slot of the same room for up to 8 consecutive weeks, where each occurrence is checked against the booking rules on its own"
+    timeoutSec: 1200
+    budget: { maxUsd: 5.00 }
+    oracles:
+      - gitDiff: { changed: [ docs/specbook/06-REQS-FR-Functional-Requirements.md ] }
+  - skill: ase-sync-reconcile
+    args: "--target DOCS --source SPEC the booking rules and the login of the README"
+    timeoutSec: 1200
+    budget: { maxUsd: 5.00 }
+runs: 1
+fixture:
+  git: true
+  files: fixture/tree
+  setup: setup.sh
+oracles:
+  - notErrored: true
+  - check:
+      label: "the specification still lints without errors"
+      command: "ase spec lint > /tmp/ase-spec-lint.$$ 2>&1; s=$?; ! grep -q '\\[ERROR\\]' /tmp/ase-spec-lint.$$ && test $s -eq 0"
+      timeoutSec: 120
+  - check:
+      label: "the new recurring-booking requirement is a COULD with the 8-week bound"
+      command: "f=docs/specbook/06-REQS-FR-Functional-Requirements.md; awk '/^##  REQUIREMENT:/{p=tolower($0) ~ /recurr|weekly|series/} p' $f > /tmp/ase-req.$$; grep -q 'COULD' /tmp/ase-req.$$ && grep -qiE '8|eight' /tmp/ase-req.$$"
+  - check:
+      label: "the README now states the specified rules (15 minutes, 4 hours, 30 days, no-show release, SSO)"
+      command: "grep -qiE '15.?min' README.md && grep -qiE '4 hours|four hours' README.md && grep -qiE '30 days' README.md && grep -qiE '10 min' README.md && grep -qiE 'SSO|single sign-on|OIDC' README.md"
+  - check:
+      label: "the outdated README rules are gone"
+      command: "! grep -qiE '30-minute|2 hours|14 days|kept until the end' README.md"

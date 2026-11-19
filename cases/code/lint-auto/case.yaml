@@ -18,6 +18,6 @@ oracles:
   - check:
       label: "the input-mutating sort of median() is gone"
       command: "node -e 'const s=require(\"./src/stats\"); const a=[3,1,2]; s.median(a); process.exit(a.join()===\"3,1,2\"?0:1)'"
-  - rubric:
-      file: rubric.md
-      threshold: 0.7
+  - check:
+      label: "no var declarations, loose equality, or unused variable remain"
+      command: "! grep -Eq '\\bvar\\b|[^=!]==[^=]|!=[^=]|unused' src/stats.js"

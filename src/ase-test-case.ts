@@ -109,6 +109,16 @@ const oracleSchema = z.union([
         })
     }),
 
+    /*  a shell check: a command run in the sandbox project (with the case directory
+        in "$CASE_DIR") passes on exit code 0, e.g. an assertion on the Git state  */
+    z.strictObject({
+        check: z.strictObject({
+            command:      z.string(),
+            label:        z.string().optional(),
+            timeoutSec:   z.number().int().min(1).default(30)
+        })
+    }),
+
     /*  a hidden Python unit-test suite: the case-local directory is copied into
         the sandbox project only after the last stage and run there, where it
         passes only if every discovered test ran and passed  */
@@ -199,6 +209,8 @@ const caseSchema = z.strictObject({
         tasks:      z.array(z.string()).optional(),
         files:      z.string().optional(),
         nodeModules: z.array(z.string().regex(/^(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+$/)).optional(),
+        setup:      z.string().optional(),
+        mcp:        z.array(z.string()).optional(),
         change:     z.strictObject({
             files:      z.string(),
             delete:     z.string().optional(),
@@ -263,6 +275,8 @@ export type TestCase = {
         tasks:      string[]
         files:      string
         nodeModules: string[]
+        setup:      string
+        mcp:        string[]
         change:     FixtureChange | null
     }
     turns:      Turns | null
@@ -399,6 +413,8 @@ export const caseLoad = (casesDir: string, file: string): TestCase => {
                     throw new Error(`case "${name}": fixture node module "${pkg}" is not installed in the harness`)
                 return pkg
             }),
+            setup:      spec.fixture?.setup !== undefined ? resolve(spec.fixture.setup, "setup") : "",
+            mcp:        spec.fixture?.mcp ?? [],
             change:     spec.fixture?.change !== undefined ? {
                 files:      resolve(spec.fixture.change.files, "change"),
                 delete:     spec.fixture.change.delete !== undefined ?

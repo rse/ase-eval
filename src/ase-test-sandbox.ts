@@ -27,6 +27,7 @@ export type Sandbox = {
     project: string
     env:     Record<string, string>
     baseRef: string
+    mcpServers: Record<string, Record<string, unknown>>
 }
 
 /*  run a Git command in the sandbox project  */
@@ -120,7 +121,28 @@ const sandboxPopulate = async (caze: TestCase, root: string): Promise<Sandbox> =
         }), "utf8")
 
     /*  materialize the fixture  */
-    const sandbox: Sandbox = { root, home, project, env, baseRef: "" }
+    const sandbox: Sandbox = { root, home, project, env, baseRef: "", mcpServers: {} }
+
+    /*  the requested MCP servers of the developer's agent tool configuration (only
+        their transport type and URL, never any headers or credentials), e.g. a
+        gateway's web search for the searching and researching skills  */
+    if (caze.fixture.mcp.length > 0) {
+        let servers: Record<string, { type?: string, url?: string }> = {}
+        try {
+            const config = JSON.parse(await fs.promises.readFile(path.join(os.homedir(), ".claude.json"), "utf8")) as
+                { mcpServers?: Record<string, { type?: string, url?: string }> }
+            servers = config.mcpServers ?? {}
+        }
+        catch (_err) {
+            /*  no (readable) agent tool configuration: reported per server below  */
+        }
+        for (const name of caze.fixture.mcp) {
+            const server = servers[name]
+            if (server?.url === undefined || (server.type !== "http" && server.type !== "sse"))
+                throw new Error(`fixture MCP server "${name}" is no HTTP/SSE server of ~/.claude.json`)
+            sandbox.mcpServers[name] = { type: server.type, url: server.url }
+        }
+    }
     if (caze.fixture.files !== "")
         await fs.promises.cp(caze.fixture.files, project, { recursive: true })
     if (caze.fixture.config !== null)
@@ -161,6 +183,24 @@ const sandboxPopulate = async (caze: TestCase, root: string): Promise<Sandbox> =
         }
         const { stdout } = await git(sandbox, [ "rev-parse", "HEAD" ])
         sandbox.baseRef = stdout.trim()
+    }
+
+    /*  the optional setup script of the case, run in the project after the fixture
+        commit (e.g. branches, an in-progress merge, staged and unstaged hunks),
+        where a tag "ase-test-base" it creates moves the baseline of the changeset diff  */
+    if (caze.fixture.setup !== "") {
+        const setup = await execa("bash", [ caze.fixture.setup ], {
+            cwd: project, env: { ...env, CASE_DIR: caze.dir }, extendEnv: false,
+            stdin: "ignore", timeout: 120 * 1000, reject: false, all: true
+        })
+        if (setup.exitCode !== 0)
+            throw new Error(`fixture setup "${path.basename(caze.fixture.setup)}" failed (exit ${setup.exitCode}): ` +
+                `${(setup.all ?? "").split("\n").slice(-5).join(" / ")}`)
+        if (caze.fixture.git) {
+            const tag = await git(sandbox, [ "rev-parse", "--verify", "--quiet", "ase-test-base^{commit}" ]).catch(() => null)
+            if (tag !== null && tag.exitCode === 0 && tag.stdout.trim() !== "")
+                sandbox.baseRef = tag.stdout.trim()
+        }
     }
 
     /*  link the requested packages of the harness (e.g. "typescript", which the

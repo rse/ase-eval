@@ -104,6 +104,8 @@ const describeOracle = (caze: TestCase, oracle: OracleSpec): string[] => {
         for (const input of oracle.exec.stdin)
             lines.push(`        ${JSON.stringify(input)}`)
     }
+    else if ("check" in oracle)
+        lines.push(`    - check "${oracle.check.label ?? oracle.check.command}" exits with code 0 (in the project)`)
     else if ("suite" in oracle)
         lines.push(`    - hidden Python test suite "${path.relative(caze.dir, oracle.suite.dir)}" passes completely ` +
             "(copied into the project only after the last stage, run via \"python3 -m unittest\")")
@@ -184,6 +186,10 @@ export const describeCase = (caze: TestCase): string => {
             (caze.fixture.change.delete.length > 0 ? ` (deleting ${caze.fixture.change.delete.join(", ")})` : ""))
     if (caze.fixture.nodeModules.length > 0)
         fixture.push(`linked node modules of the harness [ ${caze.fixture.nodeModules.join(", ")} ] (Git-excluded)`)
+    if (caze.fixture.setup !== "")
+        fixture.push(`setup script "${path.relative(caze.dir, caze.fixture.setup)}"`)
+    if (caze.fixture.mcp.length > 0)
+        fixture.push(`MCP servers [ ${caze.fixture.mcp.join(", ")} ] of the developer's agent tool configuration`)
     lines.push(`    fixture:   ${fixture.join(", ")}`)
     if (!caze.staged && caze.stages[0].permissionMode !== "auto")
         lines.push(`    mode:      ${caze.stages[0].permissionMode} permission mode ` +

@@ -325,6 +325,19 @@ export const oraclesRun = async (oracles: OracleSpec[], caze: TestCase, sandbox:
                 detail: faults.join("; ") || `${spec.stdin.length}/${spec.stdin.length} vectors match`
             })
         }
+        else if ("check" in oracle) {
+            const spec  = oracle.check
+            const check = await execa(spec.command, {
+                shell: true, cwd: sandbox.project, env: { ...sandbox.env, CASE_DIR: caze.dir }, extendEnv: false,
+                stdin: "ignore", timeout: spec.timeoutSec * 1000, reject: false, all: true
+            })
+            const tail  = (check.all ?? "").trim().split("\n").slice(-5).join(" / ")
+            results.push({
+                kind: "check", pass: check.exitCode === 0,
+                detail: `${spec.label ?? spec.command.slice(0, 60)}: ` +
+                    (check.exitCode === 0 ? "ok" : `failed (exit ${check.exitCode ?? "timeout"})${tail !== "" ? `: ${tail}` : ""}`)
+            })
+        }
         else if ("suite" in oracle) {
             /*  copy the hidden suite into the project only now (after the changeset diff
                 was taken) and run it there, where the project root is on the module path  */

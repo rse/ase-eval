@@ -119,7 +119,7 @@ holds the authoritative schema.
 | `failHint`        | guidance printed below every failed run of the case, e.g. what to report to a gateway operator |
 | `timeoutSec`, `budget.maxUsd` | wall-clock limit and cost budget of one run                                        |
 | `maxAgentTurns`   | cap of the agentic turns of one session, a runaway guard cheaper than dollars for uncached models |
-| `fixture`         | `git` (init and commit the project), `config` (written to `.ase/config.yaml`), `tasks` (task plan files seeded into `.ase/task/`), `lifecycle` (of the seeded store), `files` (a file tree copied into the project), `change` (see below) |
+| `fixture`         | `git` (init and commit the project), `config` (written to `.ase/config.yaml`), `tasks` (task plan files seeded into `.ase/task/`), `lifecycle` (of the seeded store), `files` (a file tree copied into the project), `change` (see below), `setup` (see below), `mcp` (see below) |
 | `turns`           | interactive session: `simulator` (`scripted` with `script`, or `llm` with `persona`), `model`, `maxTurns` |
 | `disallowedTools` | tools the session must not use, e.g. `[ Edit, Write ]`                                         |
 | `permissionMode`  | `plan` starts the session in Claude Code plan mode; its `ExitPlanMode` call is auto-approved and switches to `acceptEdits` (single-session cases only) |
@@ -130,6 +130,20 @@ adds a second commit on top of the base commit: the tree `files`
 overlaid onto the project, the paths listed in the file `delete`
 removed, committed with `message`. Both commits get neutral messages and
 fixed dates; the change commit is the baseline of the `gitDiff` oracle.
+
+`fixture.setup` names a shell script of the case directory, run with
+`bash` in the project after the fixture commit (and the change commit),
+with `$CASE_DIR` set to the case directory: it builds a Git state the
+other keys cannot, e.g. branches, extra commits, an in-progress merge with
+conflicts, or staged and unstaged hunks. A tag `ase-test-base` it creates
+becomes the baseline of the changeset diff instead. A failing setup is an
+infrastructure error of the run. The `repo/*` cases share the `invoice`
+project of `cases/repo/_base/` (not a case), whose `init.sh` their setup
+scripts source.
+
+`fixture.mcp` lists MCP servers of the developer's `~/.claude.json`
+(top-level `mcpServers`, HTTP/SSE only), whose transport type and URL --
+never headers or credentials -- are added to the sessions of the case.
 
 ## Oracles
 
@@ -143,6 +157,7 @@ fixed dates; the change commit is the baseline of the `gitDiff` oracle.
 | `taskStore`  | `id`, `exists`, `status`, `titleMatch`, `bodyMatch`, `count` | the task store (`.ase/task/`) satisfies all fields                        |
 | `toolSequence` | `calls`, `mode`, `only`                                  | the tool calls matching `only` (default `^mcp__`), matched by their name suffix after the last `__`, equal `calls` (`mode: exact`), start with them (`prefix`), resp. contain them in order (`subsequence`, the default) |
 | `textMetric` | `in`, `file`, `min`/`maxChars`, `min`/`maxWords`           | the target's length is within the bounds                                    |
+| `check`      | `command`, `label`, `timeoutSec` (default `30`)            | `command` (a shell command in the project, `$CASE_DIR` set) exits with code 0, e.g. an assertion on the Git state |
 | `exec`       | `command`, `reference`, `stdin`, `timeoutSec`              | `command` (in the project) prints the same stdout as `reference` (in the case directory) for every `stdin` vector, trailing whitespace ignored |
 | `suite`      | `dir`, `timeoutSec`                                        | the hidden Python suite `dir`, copied into the project only after the last session and the diff, runs via `python3 -m unittest discover` with every test passed |
 | `rubric`     | `file`, `threshold`, `votes`                               | the majority of LLM judge votes on the output reaches `threshold`          |

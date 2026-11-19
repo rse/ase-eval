@@ -16,6 +16,9 @@
 ##                       (default: $ASE_TEST_REF_MODEL, else eu.anthropic.claude-opus-5-5)
 ##    --ref-fallback <id> judge and simulator model after a safeguard refusal
 ##                       (default: $ASE_TEST_REF_FALLBACK, else eu.anthropic.claude-sonnet-5)
+##    -F, --only-failed  skip, per model, the cases it passed 100% in its last two
+##                       executions under results/ (--no-only-failed: off; default:
+##                       a pre-checked option in an interactive session, off with --yes)
 ##    --yes              skip the cost confirmation
 ##  Harness options are passed to every runner, e.g. --jobs=6 -K --max-cost-usd=50.
 ##  After a run, a "repeat:" line shows the command that repeats the exact run.

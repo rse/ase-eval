@@ -14,6 +14,7 @@ import picomatch     from "picomatch"
 
 import { caseDiscover }  from "./ase-test-case.js"
 import { harnessRoot }   from "./ase-test-sandbox.js"
+import { summaryLoadAll, stableCases } from "./ase-test-history.js"
 
 /*  one entry of the checkbox picker ("value" is the id behind the label)  */
 export type PickItem = { label: string, hint: string, value: string }
@@ -46,10 +47,10 @@ export const pickerToggle = (selected: boolean[], cursor: number, selectAll: boo
 
 /*  run the interactive checkbox picker and resolve to the selected real-item
     indices (without the optional "select all" pseudo entry), or null on abort  */
-const pick = (title: string, items: PickItem[], selectAll: boolean): Promise<number[] | null> => {
+const pick = (title: string, items: PickItem[], selectAll: boolean, initial: boolean[] = []): Promise<number[] | null> => {
     const list = selectAll ? [ { label: "select all tests", hint: "", value: "" }, ...items ] : items
     let cursor   = 0
-    let selected = list.map(() => false)
+    let selected = list.map((_item, i) => initial[i] ?? false)
     let lines    = 0
     const draw = (): void => {
         if (lines > 0)
@@ -102,10 +103,12 @@ const pick = (title: string, items: PickItem[], selectAll: boolean): Promise<num
     (exported pure, so the splitting is testable offline)  */
 export type LaunchArgs = {
     tests: string[] | null, models: string[] | null, refModel: string | null, refFallback: string | null,
-    yes: boolean, passThrough: string[]
+    onlyFailed: boolean | null, yes: boolean, passThrough: string[]
 }
 export const parseArgv = (argv: string[]): LaunchArgs => {
-    const result: LaunchArgs = { tests: null, models: null, refModel: null, refFallback: null, yes: false, passThrough: [] }
+    const result: LaunchArgs = {
+        tests: null, models: null, refModel: null, refFallback: null, onlyFailed: null, yes: false, passThrough: []
+    }
     const items = (name: string, value: string | undefined): string[] => {
         const list = (value ?? "").split(",").map((s) => s.trim()).filter((s) => s !== "")
         if (list.length === 0)
@@ -132,6 +135,10 @@ export const parseArgv = (argv: string[]): LaunchArgs => {
             else
                 result.models = items(opt[1], value)
         }
+        else if (arg === "-F" || arg === "--only-failed")
+            result.onlyFailed = true
+        else if (arg === "--no-only-failed")
+            result.onlyFailed = false
         else if (arg === "--yes")
             result.yes = true
         else
@@ -143,13 +150,14 @@ export const parseArgv = (argv: string[]): LaunchArgs => {
 /*  the command line that repeats this exact run (exported pure for testing);
     a glob character gets quoted, so the shell passes it through verbatim  */
 export const repeatLine = (tests: string[], models: string[], refModel: string, refFallback: string,
-    passThrough: string[]): string => {
+    onlyFailed: boolean, passThrough: string[]): string => {
     const quote = (s: string) => /^[A-Za-z0-9._,=/@:-]+$/.test(s) ? s : `'${s.replace(/'/g, "'\\''")}'`
     return [ "./launch_tests.sh",
         "--tests",        quote(tests.join(",")),
         "--models",       quote(models.join(",")),
         "--ref-model",    quote(refModel),
         "--ref-fallback", quote(refFallback),
+        onlyFailed ? "--only-failed" : "--no-only-failed",
         "--yes", ...passThrough.map(quote) ].join(" ")
 }
 
@@ -294,13 +302,37 @@ const main = async (): Promise<void> => {
         models = pickedModels.map((i) => modelItems[i].value)
     }
 
-    /*  step 3: confirm the matrix, as every run burns real tokens  */
+    /*  step 3: optionally skip, per model, the cases it passed in every run of its
+        last two executions (pre-checked in an interactive session, off with --yes)  */
+    let onlyFailed = opts.onlyFailed ?? false
+    if (opts.onlyFailed === null && !opts.yes) {
+        const item   = { label: "only failed", hint: "(skip the cases a model passed 100% in its last two runs)", value: "" }
+        const picked = await pick("Select the options:", [ item ], false, [ true ])
+        if (picked === null)
+            throw new Error("aborted -- no tests were run")
+        onlyFailed = picked.length > 0
+    }
+    const history = onlyFailed ? summaryLoadAll(path.join(harnessRoot, "results")) : []
+    const plans   = models.map((model) => {
+        const stable = onlyFailed ?
+            stableCases(history, model, selectedCases.map((caze) => caze.name)) : new Set<string>()
+        const run    = selectedCases.filter((caze) => !stable.has(caze.name))
+        return { model, cases: run, stable: [ ...stable ], runs: run.reduce((sum, caze) => sum + caze.runs, 0) }
+    })
+
+    /*  step 4: confirm the matrix, as every run burns real tokens  */
     const refModel    = opts.refModel ?? process.env.ASE_TEST_REF_MODEL ?? REF_MODEL_DEFAULT
     const refFallback = opts.refFallback ?? process.env.ASE_TEST_REF_FALLBACK ?? REF_FALLBACK_DEFAULT
-    const runsPerModel = selectedCases.reduce((sum, caze) => sum + caze.runs, 0)
-    console.log(`\n${selectedCases.length} test(s) x ${models.length} model(s), ` +
-        `${runsPerModel} run(s) per model, ${runsPerModel * models.length} run(s) in total, ` +
+    const totalRuns   = plans.reduce((sum, plan) => sum + plan.runs, 0)
+    console.log(`\n${selectedCases.length} test(s) x ${models.length} model(s), ${totalRuns} run(s) in total, ` +
         `judge and simulator: ${refModel} (fallback: ${refFallback}).`)
+    for (const plan of plans)
+        console.log(`  ${plan.model}: ${plan.cases.length} case(s), ${plan.runs} run(s)` +
+            (plan.stable.length > 0 ? chalk.dim(`; skipped as stable: ${plan.stable.join(", ")}`) : ""))
+    if (totalRuns === 0) {
+        console.log(chalk.green("nothing to run: every selected case is stable for every selected model"))
+        return
+    }
     console.log(chalk.yellow("WARNING: every run burns real tokens and costs actual money."))
     if (!opts.yes) {
         const answer = await new Promise<string>((resolve) => {
@@ -311,21 +343,22 @@ const main = async (): Promise<void> => {
             throw new Error("aborted -- no tests were run")
     }
 
-    /*  step 4: launch one runner process per model, each into its own
-        results directory, with the full model forcing of run_all_tests.sh  */
+    /*  step 5: launch one runner process per model with cases left, each into its
+        own results directory, with the full model forcing of run_all_tests.sh  */
     const timestamp = new Date().toISOString().replace(/\.\d+Z$/, "").replace(/[T:]/g, "-")
     const globs     = selectedCases.map((caze) => caze.name)
     const runners: Runner[] = []
     const children: Promise<void>[] = []
     const childProcs: ReturnType<typeof execa>[] = []
     const outageFile = path.join(harnessRoot, "results", `.outage-${timestamp}`)
-    for (const [ index, model ] of models.entries()) {
+    for (const [ index, plan ] of plans.filter((plan) => plan.cases.length > 0).entries()) {
+        const model      = plan.model
         const slug       = model.replace(/[^A-Za-z0-9._-]+/g, "-")
         const resultsDir = path.join(harnessRoot, "results", `${timestamp}-${slug}`)
         fs.mkdirSync(resultsDir, { recursive: true })
         const log    = fs.createWriteStream(path.join(resultsDir, "launcher.log"))
         const runner: Runner = {
-            model, slug, total: runsPerModel,
+            model, slug, total: plan.runs,
             done: 0, passed: 0, costUsd: 0, last: "", exitCode: null
         }
         runners.push(runner)
@@ -353,7 +386,7 @@ const main = async (): Promise<void> => {
             env.ASE_TEST_BUDGET_FACTOR = "3"
         if (env.ASE_TEST_TIME_FACTOR === undefined && !/anthropic\.claude/.test(model))
             env.ASE_TEST_TIME_FACTOR = "2"
-        const argv  = [ "--import", "tsx", "src/ase-test.ts", ...globs,
+        const argv  = [ "--import", "tsx", "src/ase-test.ts", ...plan.cases.map((caze) => caze.name),
             `--results=${resultsDir}`, ...opts.passThrough ]
         const child = execa("node", argv, { cwd: harnessRoot, env, reject: false, all: true, buffer: false })
         childProcs.push(child)
@@ -385,7 +418,7 @@ const main = async (): Promise<void> => {
         }))
     }
 
-    /*  step 5: progress visualization (one line per model, redrawn in place):
+    /*  step 6: progress visualization (one line per model, redrawn in place):
         throttled to 5 redraws per second, every line cut to the terminal width
         (a wrapped line would break the cursor-up count), each line overwritten
         instead of the whole block erased first, and the whole redraw written at
@@ -423,7 +456,7 @@ const main = async (): Promise<void> => {
     draw(true)
     fs.rmSync(outageFile, { force: true })
 
-    /*  step 6: refresh the comparison report over all results  */
+    /*  step 7: refresh the comparison report over all results  */
     console.log("")
     await execa("node", [ "--import", "tsx", "src/ase-test-compare.ts" ],
         { cwd: harnessRoot, stdio: "inherit", reject: false })
@@ -451,7 +484,7 @@ const main = async (): Promise<void> => {
     }
 
     /*  one copyable command line that repeats this exact run  */
-    console.log(chalk.dim(`repeat: ${repeatLine(globs, models, refModel, refFallback, opts.passThrough)}`))
+    console.log(chalk.dim(`repeat: ${repeatLine(globs, models, refModel, refFallback, onlyFailed, opts.passThrough)}`))
     process.exit(worst)
 }
 

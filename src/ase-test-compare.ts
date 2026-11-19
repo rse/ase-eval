@@ -12,15 +12,7 @@ import chalk       from "chalk"
 import prettyMs    from "pretty-ms"
 
 import { harnessRoot } from "./ase-test-sandbox.js"
-
-/*  the shape of a "summary.json" file (tolerantly read, all fields optional)  */
-type Run     = {
-    run: number, outcome: string, costUsd: number, durationMs: number, model: string,
-    infraKind?: string, costBasis?: string
-}
-type Case    = { name: string, skill: string, pass: boolean, incomplete?: boolean, minPass: number, runs: Run[] }
-type Meta    = { timestamp?: string, model?: string, pluginCommit?: string, pluginVersion?: string }
-type Summary = { meta: Meta, cases: Case[], totalUsd: number, aborted: string }
+import { summaryScan, summaryModel, type HistoryRun as Run, type HistorySummary as Summary } from "./ase-test-history.js"
 
 /*  one collected run summary, annotated with its origin and labels  */
 type Entry = {
@@ -50,23 +42,8 @@ const opts = program.opts<{ results: string, add: string[], out: string }>()
 
 /*  collect the summary files: direct children of the results directory, one
     nesting level deeper (the uplift layout), and the explicitly added dirs  */
-const summaryFiles: string[] = []
-const scanDir = (dir: string, depth: number): void => {
-    if (!fs.existsSync(dir))
-        return
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        if (!entry.isDirectory())
-            continue
-        const sub  = path.join(dir, entry.name)
-        const file = path.join(sub, "summary.json")
-        if (fs.existsSync(file))
-            summaryFiles.push(file)
-        else if (depth > 1)
-            scanDir(sub, depth - 1)
-    }
-}
-const resultsDir = path.isAbsolute(opts.results) ? opts.results : path.join(harnessRoot, opts.results)
-scanDir(resultsDir, 2)
+const resultsDir   = path.isAbsolute(opts.results) ? opts.results : path.join(harnessRoot, opts.results)
+const summaryFiles = summaryScan(resultsDir, 2)
 for (const dir of opts.add) {
     const file = path.join(dir, "summary.json")
     if (fs.existsSync(file))
@@ -90,17 +67,7 @@ for (const file of summaryFiles) {
             `${err instanceof Error ? err.message : String(err)} -- skipped`))
         continue
     }
-    let model = summary.meta?.model ?? ""
-    if (model === "" || model === "(account default)") {
-        const freq = new Map<string, number>()
-        for (const caze of summary.cases)
-            for (const run of caze.runs ?? []) {
-                const first = (run.model ?? "").split(",")[0].trim()
-                if (first !== "")
-                    freq.set(first, (freq.get(first) ?? 0) + 1)
-            }
-        model = [ ...freq.entries() ].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "(account default)"
-    }
+    const model = summaryModel(summary)
     const version = (summary.meta?.pluginVersion ?? "") !== "" ?
         summary.meta.pluginVersion! : (summary.meta?.pluginCommit ?? "").slice(0, 8)
     entries.push({

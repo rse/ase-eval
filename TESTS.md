@@ -401,8 +401,21 @@ case globs), `--models <ids>` (comma-separated model ids, taken as given
 -- use resolved ids, not UI aliases), and `--yes` (skip the cost
 confirmation). With all three given, no terminal interaction is needed.
 After the final PASS/FAIL lines the launcher prints a `repeat:` line:
-one copyable command (`./launch_tests.sh --tests ... --models ... --ref-model ... --ref-fallback ... --yes`
+one copyable command (`./launch_tests.sh --tests ... --models ... --ref-model ... --ref-fallback ... --only-failed|--no-only-failed --yes`
 plus the pass-through options) that repeats the exact run.
+
+`-F`, `--only-failed` skips, per model, every selected case the model
+passed in every run of its last two executions of that case under
+`results/` (`--no-only-failed` turns this off). An execution counts only
+if at least one of its runs was neither `skipped` nor an infrastructure
+`error`; a case with fewer than two such executions always runs. The
+filter applies per model, so a case stable for one model still runs for
+the others, and a model left without cases gets no runner. Without
+either option, an interactive session offers the filter as a pre-checked
+option after the model picker, while a call with `--yes` leaves it off.
+The confirmation lists, per model, the cases and runs left and the cases
+skipped as stable; the `repeat:` line carries the original selection, so
+repeating it re-applies the filter against the then-current history.
 
 ## Comparing Runs
 

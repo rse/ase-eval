@@ -1,0 +1,21 @@
+skill: ase-code-insight
+args: "invoice/"
+runs: 2
+minPass: 1
+timeoutSec: 600
+budget: { maxUsd: 2.50 }
+fixture:
+  git: true
+  setup: setup.sh
+oracles:
+  - notErrored: true
+  - gitDiff: { empty: true }
+  - regex:
+      in: output
+      match:
+        - "PROJECT ABSTRACT"
+        - "PROJECT AUTHOR"
+        - "Dana Developer"
+        - "Sam Smith"
+        - "SOURCE CHURN"
+        - "MODULE STRUCTURE"

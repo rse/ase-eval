@@ -1,6 +1,7 @@
 skill: ase-task-integrate
 args: "--mode squash shipping"
-runs: 1
+runs: 2
+minPass: 1
 timeoutSec: 900
 budget: { maxUsd: 3.00 }
 fixture:

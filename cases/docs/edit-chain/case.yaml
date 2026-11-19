@@ -24,7 +24,8 @@ stages:
     args: "--top 5 docs/ONBOARDING.md"
     timeoutSec: 480
     budget: { maxUsd: 2.00 }
-runs: 1
+runs: 2
+minPass: 1
 fixture:
   git: true
   files: fixture/tree

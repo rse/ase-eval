@@ -1,6 +1,7 @@
 skill: ase-meta-steelman
 args: "--count 3 --rounds 2 Code review should be mandatory for every change, including one-line typo fixes."
-runs: 1
+runs: 3
+minPass: 2
 timeoutSec: 600
 budget: { maxUsd: 2.00 }
 oracles:

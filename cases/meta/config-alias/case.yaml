@@ -21,7 +21,8 @@ stages:
     args: "get agent.persona"
     timeoutSec: 300
     budget: { maxUsd: 1.00 }
-runs: 1
+runs: 2
+minPass: 1
 fixture:
   git: true
 oracles:

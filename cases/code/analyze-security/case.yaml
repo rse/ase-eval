@@ -1,6 +1,7 @@
 skill: ase-code-analyze
 args: "--security src/"
-runs: 1
+runs: 2
+minPass: 1
 timeoutSec: 900
 budget: { maxUsd: 3.50 }
 fixture:

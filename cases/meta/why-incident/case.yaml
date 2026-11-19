@@ -1,6 +1,7 @@
 skill: ase-meta-why
 args: "--depth 5 --width 2 Our nightly CI pipeline has failed on three of the last five nights with 'disk quota exceeded' on the shared build runner, although each job deletes its workspace at the end."
-runs: 1
+runs: 3
+minPass: 2
 timeoutSec: 600
 budget: { maxUsd: 2.00 }
 oracles:

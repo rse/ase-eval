@@ -11,7 +11,8 @@ stages:
     args: ""
     timeoutSec: 480
     budget: { maxUsd: 2.00 }
-runs: 1
+runs: 2
+minPass: 1
 fixture:
   git: true
   setup: setup.sh

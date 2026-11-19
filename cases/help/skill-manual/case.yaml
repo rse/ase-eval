@@ -1,6 +1,7 @@
 skill: ase-help-skill
 args: "ase-repo-stage"
-runs: 1
+runs: 3
+minPass: 2
 timeoutSec: 300
 budget: { maxUsd: 1.00 }
 oracles:

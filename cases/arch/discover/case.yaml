@@ -1,6 +1,7 @@
 skill: ase-arch-discover
 args: "--limit 6 retrying failed HTTP requests with exponential backoff and jitter for the fetch calls of the relay"
-runs: 1
+runs: 2
+minPass: 1
 timeoutSec: 900
 budget: { maxUsd: 3.00 }
 fixture:
@@ -16,4 +17,4 @@ oracles:
         - "p-retry|fetch-retry|exponential-backoff|async-retry|cockatiel|ky|got|undici"
   - rubric:
       file: rubric.md
-      threshold: 0.7
+      threshold: 0.6

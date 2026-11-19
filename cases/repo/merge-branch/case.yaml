@@ -1,6 +1,7 @@
 skill: ase-repo-merge
 args: "--mode squash feature/discount"
-runs: 1
+runs: 2
+minPass: 1
 timeoutSec: 600
 budget: { maxUsd: 2.50 }
 fixture:

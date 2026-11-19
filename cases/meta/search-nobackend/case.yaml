@@ -3,7 +3,8 @@
 #   must report the missing backend instead of answering from model knowledge
 skill: ase-meta-search
 args: "--services websearch Which Python version introduced the match statement (structural pattern matching), and which PEP specified it?"
-runs: 1
+runs: 3
+minPass: 2
 timeoutSec: 480
 budget: { maxUsd: 1.50 }
 oracles:

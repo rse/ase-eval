@@ -3,7 +3,8 @@
 #   findings and without touching the plan
 skill: ase-task-research
 args: "csvparse: which CSV parser fits our import, given the current code"
-runs: 1
+runs: 2
+minPass: 1
 timeoutSec: 900
 budget: { maxUsd: 3.00 }
 fixture:

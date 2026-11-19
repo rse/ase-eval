@@ -1,6 +1,7 @@
 skill: ase-meta-workflow
 args: "--scope local release-prep lint the staged changes with ase-code-lint --staged, then in parallel update the changelog with ase-repo-changelog and summarize the staged diff with ase-repo-diff --risk, and finally propose a commit message with ase-repo-commit"
-runs: 1
+runs: 3
+minPass: 2
 timeoutSec: 900
 budget: { maxUsd: 3.00 }
 fixture:

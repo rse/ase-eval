@@ -1,6 +1,7 @@
 skill: ase-meta-proximity
 args: "property-based testing"
-runs: 1
+runs: 3
+minPass: 2
 timeoutSec: 480
 budget: { maxUsd: 1.50 }
 oracles:

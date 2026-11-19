@@ -1,0 +1,18 @@
+skill: ase-code-explain
+args: "invoice/calc.py"
+runs: 2
+minPass: 1
+timeoutSec: 600
+budget: { maxUsd: 2.50 }
+fixture:
+  git: true
+  setup: setup.sh
+oracles:
+  - notErrored: true
+  - gitDiff: { empty: true }
+  - regex:
+      in: output
+      match: [ "WHAT", "WHY", "ANALOGY", "CRUXES", "GOTCHAS", "ROUND_HALF_EVEN|half-even|banker" ]
+  - rubric:
+      file: rubric.md
+      threshold: 0.7

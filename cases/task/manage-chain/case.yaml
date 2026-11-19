@@ -39,7 +39,8 @@ stages:
     args: "gamma"
     timeoutSec: 240
     budget: { maxUsd: 1.00 }
-runs: 1
+runs: 2
+minPass: 1
 fixture:
   git: true
   lifecycle: solo

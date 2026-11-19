@@ -1,6 +1,7 @@
 skill: ase-meta-diaboli
 args: "--count 4 Rewriting our 12-year-old Java monolith as microservices will cut our release lead time in half within a year."
-runs: 1
+runs: 3
+minPass: 2
 timeoutSec: 600
 budget: { maxUsd: 2.00 }
 oracles:

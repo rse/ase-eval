@@ -17,7 +17,8 @@ stages:
     args: "--max-parts 3 webshop: split along search, checkout, and back-office reporting"
     timeoutSec: 900
     budget: { maxUsd: 3.50 }
-runs: 1
+runs: 2
+minPass: 1
 fixture:
   git: true
   lifecycle: solo

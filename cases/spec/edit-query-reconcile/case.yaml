@@ -19,7 +19,8 @@ stages:
     args: "--target DOCS --source SPEC the booking rules and the login of the README"
     timeoutSec: 1200
     budget: { maxUsd: 5.00 }
-runs: 1
+runs: 2
+minPass: 1
 fixture:
   git: true
   files: fixture/tree

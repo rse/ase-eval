@@ -179,6 +179,7 @@ const stageSchema = z.strictObject({
     args:       z.string().optional(),
     timeoutSec: z.number().int().min(1).optional(),
     maxAgentTurns: z.number().int().min(1).optional(),
+    maxToolCalls: z.number().int().min(1).optional(),
     budget:     z.strictObject({
         maxUsd:     z.number().positive()
     }).optional(),
@@ -199,6 +200,7 @@ const caseSchema = z.strictObject({
     failHint:   z.string().optional(),
     timeoutSec: z.number().int().min(1).optional(),
     maxAgentTurns: z.number().int().min(1).optional(),
+    maxToolCalls: z.number().int().min(1).optional(),
     budget:     z.strictObject({
         maxUsd:     z.number().positive()
     }).optional(),
@@ -241,6 +243,7 @@ export type Stage = {
     timeoutSec: number
     maxUsd:     number
     maxAgentTurns: number | null
+    maxToolCalls: number | null
     turns:      Turns | null
     permissionMode: "auto" | "plan"
     disallowedTools: string[]
@@ -302,9 +305,10 @@ export const caseLoad = (casesDir: string, file: string): TestCase => {
         throw new Error(`case "${name}": exactly one of "skill", "promptFile", or "stages" is required`)
     if (spec.stages !== undefined
         && (spec.turns !== undefined || spec.timeoutSec !== undefined || spec.budget !== undefined
-            || spec.disallowedTools !== undefined || spec.maxAgentTurns !== undefined))
-        throw new Error(`case "${name}": "turns", "timeoutSec", "maxAgentTurns", "budget", and "disallowedTools" ` +
-            "belong to the stages of a staged case")
+            || spec.disallowedTools !== undefined || spec.maxAgentTurns !== undefined
+            || spec.maxToolCalls !== undefined))
+        throw new Error(`case "${name}": "turns", "timeoutSec", "maxAgentTurns", "maxToolCalls", "budget", ` +
+            "and \"disallowedTools\" belong to the stages of a staged case")
     if (spec.stages !== undefined && spec.permissionMode !== undefined)
         throw new Error(`case "${name}": "permissionMode" is supported for single-session cases only`)
     if (spec.fixture?.change !== undefined && spec.fixture.git !== true)
@@ -383,6 +387,7 @@ export const caseLoad = (casesDir: string, file: string): TestCase => {
             timeoutSec: stage.timeoutSec ?? 300,
             maxUsd:     stage.budget?.maxUsd ?? 2.0,
             maxAgentTurns: stage.maxAgentTurns ?? null,
+            maxToolCalls: stage.maxToolCalls ?? null,
             turns:      turnsLoad(stage.turns, where),
             permissionMode: "auto",
             disallowedTools: stage.disallowedTools ?? [],
@@ -439,6 +444,7 @@ export const caseLoad = (casesDir: string, file: string): TestCase => {
             timeoutSec: result.timeoutSec,
             maxUsd:     result.maxUsd,
             maxAgentTurns: spec.maxAgentTurns ?? null,
+            maxToolCalls: spec.maxToolCalls ?? null,
             turns:      result.turns,
             permissionMode: spec.permissionMode ?? "auto",
             disallowedTools: result.disallowedTools,

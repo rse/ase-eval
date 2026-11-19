@@ -8,53 +8,89 @@ import * as fs   from "node:fs"
 
 import type { Sandbox }       from "./ase-test-sandbox.js"
 import type { SessionResult } from "./ase-test-session.js"
-import { llmText }            from "./ase-test-llm.js"
+import { llmTextFrom }        from "./ase-test-llm.js"
 
 /*  the maximum number of characters of a judged text  */
 const TEXT_MAX = 40000
 
+/*  the first balanced JSON object of a judge response carrying a valid score, as a
+    judge may wrap its answer into prose or a code fence, or mention braces in it  */
+export const judgeParse = (text: string): { score: number, reason: string } | null => {
+    for (let start = text.indexOf("{"); start >= 0; start = text.indexOf("{", start + 1)) {
+        let depth = 0
+        let quoted = false
+        for (let i = start; i < text.length; i++) {
+            const c = text[i]
+            if (quoted) {
+                if (c === "\\")
+                    i++
+                else if (c === "\"")
+                    quoted = false
+            }
+            else if (c === "\"")
+                quoted = true
+            else if (c === "{")
+                depth++
+            else if (c === "}" && --depth === 0) {
+                try {
+                    const json = JSON.parse(text.slice(start, i + 1))
+                    if (typeof json.score === "number" && json.score >= 0 && json.score <= 1)
+                        return { score: json.score, reason: typeof json.reason === "string" ? json.reason : "" }
+                }
+                catch (_err) {
+                    /*  no JSON object: try the next opening brace  */
+                }
+                break
+            }
+        }
+    }
+    return null
+}
+
+/*  a judge whose votes stayed mostly unparsable, carrying the raw vote texts  */
+export class JudgeMalfunction extends Error {
+    constructor (message: string, public log: string) {
+        super(message)
+    }
+}
+
 /*  the shared vote loop of the LLM judges: each of the <votes> independent votes
-    scores from 0.0 to 1.0 as a JSON object, a vote passes when its score reaches
-    the threshold, and the majority of the votes decides, while a majority of
-    unparsable votes signals a malfunctioning judge instead of a quality failure  */
+    scores from 0.0 to 1.0 as a JSON object (an unparsable answer is re-asked twice),
+    a vote passes when its score reaches the threshold, and the majority of the
+    parsed votes decides, while a majority of still unparsable votes signals a
+    malfunctioning judge, which is thrown (an evaluation error, retried on the kept
+    sandbox) instead of being reported as a quality failure  */
 const judgeVotes = async (sandbox: Sandbox, system: string, prompt: string,
     threshold: number, votes: number, kind: string):
-Promise<{ kind: string, pass: boolean, detail: string, scores?: number[] }> => {
+Promise<{ kind: string, pass: boolean, detail: string, scores?: number[], log?: string }> => {
     const model  = process.env.ASE_TEST_JUDGE_MODEL ?? "claude-haiku-5-5"
-    const scores: { score: number, reason: string, parsed: boolean }[] = []
+    const scores: { score: number, reason: string, model: string }[] = []
+    const raw:    string[] = []
+    let unparsable = 0
     for (let vote = 0; vote < votes; vote++) {
-        const text = await llmText(sandbox, model, system, prompt)
-        const m    = /\{[\s\S]*\}/.exec(text)
-        let score  = 0
-        let reason = "unparsable judge response"
-        let parsed = false
-        if (m !== null) {
-            try {
-                const json = JSON.parse(m[0])
-                if (typeof json.score === "number" && json.score >= 0 && json.score <= 1) {
-                    score  = json.score
-                    reason = typeof json.reason === "string" ? json.reason : ""
-                    parsed = true
-                }
-            }
-            catch (_err) {
-                /*  keep the unparsable default  */
-            }
+        let parsed: { score: number, reason: string } | null = null
+        for (let ask = 1; parsed === null && ask <= 3; ask++) {
+            const answer = await llmTextFrom(sandbox, model, system, prompt)
+            raw.push(`--- vote ${vote + 1}, ask ${ask} (model: ${answer.model})\n${answer.text.slice(0, 2048)}`)
+            parsed = judgeParse(answer.text)
+            if (parsed !== null)
+                scores.push({ ...parsed, model: answer.model })
         }
-        scores.push({ score, reason, parsed })
+        if (parsed === null)
+            unparsable++
     }
-    const unparsable = scores.filter((entry) => !entry.parsed).length
+    const log = raw.join("\n") + "\n"
     if (unparsable > votes / 2)
-        return {
-            kind, pass: false, scores: scores.map((entry) => entry.score),
-            detail: `judge malfunctioned: ${unparsable}/${votes} votes unparsable (model: ${model})`
-        }
-    const passed = scores.filter((entry) => entry.parsed && entry.score >= threshold).length
-    const pass   = passed > votes / 2
+        throw new JudgeMalfunction(`judge malfunctioned: ${unparsable}/${votes} votes unparsable (model: ${model})`, log)
+    const models = [ ...new Set(scores.map((entry) => entry.model)) ]
+        .map((name) => `${name} ×${scores.filter((entry) => entry.model === name).length}`).join(", ")
+    const passed = scores.filter((entry) => entry.score >= threshold).length
+    const pass   = passed > scores.length / 2
     return {
-        kind, pass, scores: scores.map((entry) => entry.score),
-        detail: `${passed}/${votes} votes >= ${threshold} ` +
-            `(scores: ${scores.map((entry) => entry.score.toFixed(2)).join(", ")}; ` +
+        kind, pass, scores: scores.map((entry) => entry.score), log,
+        detail: `${passed}/${scores.length} votes >= ${threshold} ` +
+            (unparsable > 0 ? `(${unparsable} unparsable) ` : "") +
+            `(scores: ${scores.map((entry) => entry.score.toFixed(2)).join(", ")}; model: ${models}; ` +
             `${scores.map((entry) => entry.reason).filter((reason) => reason !== "").at(-1) ?? ""})`
     }
 }
@@ -62,7 +98,7 @@ Promise<{ kind: string, pass: boolean, detail: string, scores?: number[] }> => {
 /*  judge the output of one run against a rubric  */
 export const judgeRubric = async (sandbox: Sandbox, result: SessionResult,
     spec: { file: string, threshold: number, votes: number }):
-Promise<{ kind: string, pass: boolean, detail: string, scores?: number[] }> => {
+Promise<{ kind: string, pass: boolean, detail: string, scores?: number[], log?: string }> => {
     const rubric = fs.readFileSync(spec.file, "utf8")
     const output = result.output.join("\n").slice(0, TEXT_MAX)
     const system =
@@ -80,7 +116,7 @@ Promise<{ kind: string, pass: boolean, detail: string, scores?: number[] }> => {
 export const judgeSimilar = async (sandbox: Sandbox,
     expectedText: string, actualText: string,
     spec: { threshold: number, votes: number }):
-Promise<{ kind: string, pass: boolean, detail: string, scores?: number[] }> => {
+Promise<{ kind: string, pass: boolean, detail: string, scores?: number[], log?: string }> => {
     const system =
         "You are a strict, impartial evaluator of the semantic similarity of two texts: " +
         "the EXPECTED text states the decisions, facts, and constraints a result must carry, " +

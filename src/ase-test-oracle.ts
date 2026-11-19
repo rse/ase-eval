@@ -27,8 +27,27 @@ export type OracleResult = {
 /*  whether a skill reported an error in its output lines, as the skills report
     their errors as "▶ ERROR: ..." while the agent tool still exits successfully
     (see "skillErrored" of "tool/src/ase-agent-runtime-tool.ts")  */
-export const skillErrored = (output: string[]): boolean =>
-    output.some((line) => /(?:^|▶ )ERROR:/.test(line.trim()))
+export const skillErrored = (output: string[], ownSkills: string[] = []): boolean => {
+    /*  an "ERROR:" at the start of a text block, resp. a "▶ ERROR:" anywhere  */
+    const lines = output.map((text) => text.trim()).flatMap((text) =>
+        text.split("\n").map((line, index) => ({ line: line.trim(), first: index === 0 })))
+    const named = (line: string): string =>
+        /✪ skill: \*\*(?:ase:)?([a-z0-9-]+)\*\*/.exec(line)?.[1] ?? ""
+    const own   = new Set(ownSkills.map((skill) => skill.replace(/^ase:/, "")))
+    return lines.some(({ line, first }, index) => {
+        if (!/▶ ERROR:/.test(line) && !(first && /^ERROR:/.test(line)))
+            return false
+
+        /*  the error of a nested foreign skill (e.g. "ase-meta-search" without a
+            search backend) counts only if no own skill finished after it, as the
+            calling skill then recovered from it  */
+        const skill = named(line)
+        if (skill === "" || own.size === 0 || own.has(skill))
+            return true
+        return !lines.slice(index + 1).some(({ line: later }) =>
+            own.has(named(later)) && /▶ status: \*\*skill finished\*\*/.test(later))
+    })
+}
 
 /*  whether a skill produced any output of its own at all, recognized by the
     "⧉ **ASE**" header or the "▶ ERROR:" line of the skill output conventions
@@ -151,7 +170,7 @@ export const oraclesRun = async (oracles: OracleSpec[], caze: TestCase, sandbox:
         value === undefined ? [] : (Array.isArray(value) ? value : [ value ])
     for (const oracle of oracles) {
         if ("notErrored" in oracle) {
-            const errored = result.errored || skillErrored(result.output)
+            const errored = result.errored || skillErrored(result.output, caze.stages.map((stage) => stage.skill))
             results.push({
                 kind: "notErrored", pass: !errored,
                 detail: errored ? (result.failure !== "" ? result.failure : "skill reported \"▶ ERROR:\"") : "no error"

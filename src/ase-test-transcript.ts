@@ -117,11 +117,12 @@ export const transcriptFinish = async (transcript: Transcript, caze: TestCase, s
     if (fs.existsSync(store))
         await fs.promises.cp(store, path.join(transcript.dir, "taskstore"), { recursive: true })
 
-    /*  keep the complete output of the "suite" oracle in its own log file only (removed
-        in place, so it neither lands in "result.json" nor in "summary.json")  */
+    /*  keep the complete output of the "suite" oracle resp. the raw votes of the judge
+        oracles in their own log files only (removed in place, so they neither land in
+        "result.json" nor in "summary.json", and appended for repeated oracle kinds)  */
     for (const oracle of oracles)
         if (oracle.log !== undefined) {
-            await fs.promises.writeFile(path.join(transcript.dir, `${oracle.kind}.log`), oracle.log, "utf8")
+            await fs.promises.appendFile(path.join(transcript.dir, `${oracle.kind.replace(/\//g, "-")}.log`), oracle.log, "utf8")
             delete oracle.log
         }
     await fs.promises.writeFile(path.join(transcript.dir, "result.json"), JSON.stringify({
@@ -142,6 +143,9 @@ export const transcriptFinish = async (transcript: Transcript, caze: TestCase, s
         unparsedInputs: result.unparsedInputs,
         slowStream: result.slowStream,
         slowCps:   Math.round(result.slowCps * 10) / 10,
+        subSilentSec: result.subSilentSec,
+        agentTurns: `${result.agentTurns}/${result.agentTurnsMax}`,
+        toolCalls: `${result.toolCalls}/${result.toolCallsMax}`,
         costLowerBound: result.costLowerBound,
         failure:   result.failure,
         oracles,

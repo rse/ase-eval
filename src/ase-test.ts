@@ -29,8 +29,9 @@ import { describeCase }                    from "./ase-test-describe.js"
 import { reportRun, reportStage, reportSummary, summaryWrite, caseAggregate, GATEWAY_FAILURE } from "./ase-test-report.js"
 import type { RunOutcome, CaseOutcome, InfraKind } from "./ase-test-report.js"
 import { llmSpend }                        from "./ase-test-llm.js"
+import { JudgeMalfunction }                from "./ase-test-judge.js"
 import { pricingRate }                     from "./ase-test-pricing.js"
-import { outageConfigure, outageMark, outageReset, outageWait, pause } from "./ase-test-outage.js"
+import { outageConfigure, outageMark, outageReset, outageWait, pause, slowConfirmed } from "./ase-test-outage.js"
 import type { CostBasis }                  from "./ase-test-pricing.js"
 
 /*  the CLI of the skill test harness  */
@@ -251,12 +252,17 @@ const endedInApiRetries = (r: SessionResult): boolean =>
     && Date.now() - r.lastApiRetryAt <= GATEWAY_RETRY_WINDOW_MS
 
 /*  the gateway cause of a session end, if any: the agent tool's own API retries,
-    resp. a slow stream confirmed by other sessions as a gateway slowdown (a
-    timeout or stall then says nothing about the model either)  */
+    resp. a slow stream confirmed by other sessions as a gateway slowdown, resp.
+    a sub-agent silent for minutes while other sessions are slow, too (a timeout
+    or stall then says nothing about the model either, as the SDK streams nothing
+    of a sub-agent, whose hanging request looks exactly like this)  */
+const SUB_SILENT_SEC = 120
 const gatewayEnd = (r: SessionResult): string | null =>
     endedInApiRetries(r) ? `ended amid API retries (${r.apiRetries}x, last: ${r.apiRetryText})` :
         (r.timedOut || r.stalled) && r.slowStream ? `ended in a gateway slowdown (${r.slowCps.toFixed(1)} chars/s)` :
-            null
+            (r.timedOut || r.stalled) && r.subSilentSec >= SUB_SILENT_SEC && slowConfirmed(Date.now() - 10 * 60 * 1000) ?
+                `ended in a gateway slowdown (sub-agent silent ${r.subSilentSec}s)` :
+                null
 
 /*  the number of "ase_task_save" calls of one session beyond which it is
     considered a save loop (diagnostic only)  */
@@ -378,7 +384,12 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
             slowCps:      last.slowCps,
             costLowerBound: results.some((r) => r.costLowerBound),
             costBasis:    ([ "unpriced", "table", "sdk" ] as CostBasis[])
-                .find((basis) => results.some((r) => r.costBasis === basis)) ?? "sdk"
+                .find((basis) => results.some((r) => r.costBasis === basis)) ?? "sdk",
+            agentTurns:   last.agentTurns,
+            agentTurnsMax: last.agentTurnsMax,
+            toolCalls:    last.toolCalls,
+            toolCallsMax: last.toolCallsMax,
+            subSilentSec: last.subSilentSec
         }
         outcome.costUsd   = result.costUsd
         outcome.costBasis = result.costBasis
@@ -506,6 +517,18 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
                     "pass" : "fail"
                 outcome.failure = result.failure
 
+                /*  a passed run close to its agent turn or tool call cap hints at a cap
+                    too tight for weaker (more verbose) models (the reported "num_turns"
+                    may also count turns the cap does not, so beyond the cap it says nothing)  */
+                if (outcome.outcome === "pass")
+                    for (const [ index, r ] of results.entries())
+                        for (const [ what, used, max ] of [
+                            [ "agent turns", r.agentTurns, r.agentTurnsMax ],
+                            [ "tool calls",  r.toolCalls,  r.toolCallsMax  ] ] as [ string, number, number ][])
+                            if (max > 0 && used >= 0.8 * max && used <= max)
+                                console.log(chalk.yellow(`⚠ ${label}${caze.staged ? ` stage ${index + 1}` : ""}: ` +
+                                    `used ${used}/${max} ${what} (≥ 80% of the cap)`))
+
                 /*  a failed run whose session saw a gateway or server error (e.g. a
                     sub-agent hit by an HTTP 503, or a timeout in a gateway slowdown) says
                     nothing about the model, so it is an infrastructure error and
@@ -527,6 +550,9 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
                     outcome.oracles, outcome.outcome === "pass", stages)
             }
             catch (err) {
+                if (err instanceof JudgeMalfunction)
+                    await fs.promises.writeFile(path.join(transcript.dir, "judge-raw.log"), err.log, "utf8")
+                        .catch(() => { /*  the raw votes are a mere diagnostic  */ })
                 outcome.outcome   = "error"
                 outcome.failure   = `evaluation failed: ${err instanceof Error ? err.message : String(err)}`
                 outcome.infraKind = GATEWAY_FAILURE.test(outcome.failure) ? "gateway" : "eval"
@@ -571,25 +597,43 @@ const outageNote = (outcome: RunOutcome): void => {
     else if (outcome.outcome !== "error" && outcome.outcome !== "skipped")
         outageReset()
 }
+/*  a startup crash: an attempt failing within its first seconds, before any model
+    call, because the agent tool could not load its settings from the gateway, which
+    costs nothing and says nothing, so it gets up to "STARTUP_FREE_MAX" retries of
+    its own (after a longer delay), which do not count against the regular ones  */
+const STARTUP_FREE_MAX = 5
+const startupCrash = (outcome: RunOutcome): boolean =>
+    outcome.outcome === "error" && outcome.durationMs < 30 * 1000
+    && /Couldn't load settings from Cloud gateway/.test(outcome.failure)
 const executeRun = async (caze: TestCase, run: number): Promise<RunOutcome> => {
     await outageWait()
     let attempt   = 1
+    let counted   = 1
+    let free      = 0
     let current   = await executeAttempt(caze, run, attempt)
     let gateway   = current.outcome.infraKind === "gateway"
     let costUsd   = 0
     let bookedUsd = 0
     outageNote(current.outcome)
-    while (current.retry && attempt < (gateway ? 3 : 2)) {
+    while (current.retry
+        && (counted < (gateway ? 3 : 2) || (startupCrash(current.outcome) && free < STARTUP_FREE_MAX))) {
         if (aborted !== "" || spentUsd() > ceilingUsd)
             break
 
         /*  a transient error (incl. a stall) is retried only after a delay (at least
-            30 s plus a jitter, resp. the end of a gateway outage pause), never
-            immediately  */
-        const delay = ([ "gateway", "api", "sim", "stall" ] as InfraKind[]).includes(current.outcome.infraKind) ?
-            30 * 1000 + Math.random() * 15 * 1000 : 0
+            30 s plus a jitter, resp. 60-120 s after a startup crash, and the end of a
+            gateway outage pause), never immediately  */
+        const startup = startupCrash(current.outcome) && free < STARTUP_FREE_MAX
+        if (startup)
+            free += 1
+        else
+            counted += 1
+        const delay = startup ? 60 * 1000 + Math.random() * 60 * 1000 :
+            ([ "gateway", "api", "sim", "stall" ] as InfraKind[]).includes(current.outcome.infraKind) ?
+                30 * 1000 + Math.random() * 15 * 1000 : 0
         console.log(chalk.yellow(`⚠ ${caze.name} run ${run}: ${current.outcome.failure} -- ` +
-            `retrying (attempt ${attempt + 1}/${gateway ? 3 : 2})` +
+            (startup ? `startup crash -- retrying (free ${free}/${STARTUP_FREE_MAX})` :
+                `retrying (attempt ${counted}/${gateway ? 3 : 2})`) +
             (delay > 0 ? ` (in ≥${Math.round(delay / 1000)}s)` : "")))
         await pause(delay)
         await outageWait()

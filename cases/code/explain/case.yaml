@@ -12,7 +12,7 @@ oracles:
   - gitDiff: { empty: true }
   - regex:
       in: output
-      match: [ "WHAT", "WHY", "ANALOGY", "CRUXES", "GOTCHAS", "ROUND_HALF_EVEN|half-even|banker" ]
+      match: [ "WHAT", "WHY", "ANALOGY", "CRUXES", "GOTCHAS", "ROUND_HALF_EVEN|[Hh]alf-even|[Bb]anker" ]
   - rubric:
       file: rubric.md
       threshold: 0.7

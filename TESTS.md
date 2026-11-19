@@ -119,6 +119,7 @@ holds the authoritative schema.
 | `failHint`        | guidance printed below every failed run of the case, e.g. what to report to a gateway operator |
 | `timeoutSec`, `budget.maxUsd` | wall-clock limit and cost budget of one run                                        |
 | `maxAgentTurns`   | cap of the agentic turns of one session, a runaway guard cheaper than dollars for uncached models |
+| `maxToolCalls`    | cap of the tool calls of one session (incl. sub-agents), overriding `$ASE_TEST_MAX_TOOL_CALLS` |
 | `fixture`         | `git` (init and commit the project), `config` (written to `.ase/config.yaml`), `tasks` (task plan files seeded into `.ase/task/`), `lifecycle` (of the seeded store), `files` (a file tree copied into the project), `change` (see below), `setup` (see below), `mcp` (see below) |
 | `turns`           | interactive session: `simulator` (`scripted` with `script`, or `llm` with `persona`), `model`, `maxTurns` |
 | `disallowedTools` | tools the session must not use, e.g. `[ Edit, Write ]`                                         |
@@ -168,8 +169,13 @@ Targets (`in`): `lastMessage` is the last assistant text block, `output`
 all assistant text, `dialog` the user/assistant texts without tool
 calls, `file` a project file (with `file:`), `taskBody` the body of a
 task plan (with `id:`, `similar` only). A missing file or task fails the
-oracle; `review` scores an empty text instead. A judge whose votes are
-mostly unparsable reports a malfunction instead of a quality failure.
+oracle; `review` scores an empty text instead. A judge vote is the first
+balanced JSON object with a valid `score` in the answer, and an unparsable
+answer is re-asked twice; unparsable votes are left out of the majority,
+and a judge whose votes stay mostly unparsable is a malfunction (an
+evaluation error, see "Budget and Retries"), never a quality failure. The
+raw votes land in `rubric.log` resp. `similar.log` (`judge-raw.log` for a
+malfunction), and the oracle detail names the answering model(s).
 
 The `review` oracle fails on an unparseable review, on a tool call
 reaching into `cases/review/`, `src/review/`, a `solution/` folder, or
@@ -190,6 +196,7 @@ review cases live in `cases/review/<name>/` (see `docs/review/README.md`).
 | `fixture.nodeModules`                     | `[]`               | packages of the harness `node_modules/` (incl. their `.bin` entries) symlinked into the project, Git-excluded, e.g. `[ typescript ]` for a fixture declaring but not installing it |
 | `turns.maxTurns`                          | `16`               | *user* turns; the agentic turn cap is 4×, resp. 32 single-shot |
 | `maxAgentTurns`                           | see `turns.maxTurns` | overrides the agentic turn cap (also per stage)             |
+| `maxToolCalls`                            | `$ASE_TEST_MAX_TOOL_CALLS` (`150`) | overrides the tool call cap (also per stage)   |
 | `turns.model`                             | `claude-haiku-5-5` | `llm` simulator only; precedence: `$ASE_TEST_SIM_FORCE`, `turns.model`, `$ASE_TEST_SIM_MODEL`, default |
 | `in` (`regex`, `textMetric`, `similar`, `review`) | `lastMessage` |                                                        |
 | `disallowedTools`                         | `[]`               | a single-shot session also always disallows `AskUserQuestion` |
@@ -274,7 +281,9 @@ sessions use the automatic permission mode of the agent tool.
     (default `120`, `0` disables it) is aborted as a *stall* -- e.g. a
     hanging gateway stream -- and is an infrastructure error, retried
     once. Progress is any regular SDK message and any streamed event
-    except a keep-alive `ping`, while thinking (streamed thinking deltas
+    except a keep-alive `ping`, while the `tool_progress` keep-alives of a
+    waiting `Agent`/`Task` call and the `task_progress` reports without a
+    growing token usage are no progress, and thinking (streamed thinking deltas
     and `thinking_tokens` estimates) counts only once it adds up to
     `$ASE_TEST_STALL_MIN_TOKENS` tokens (default `50`), so a stream
     trickling a few tokens for minutes is caught, too. A stream of only
@@ -282,12 +291,17 @@ sessions use the automatic permission mode of the agent tool.
     alive, e.g. while an upstream delivers a large response only once it
     is complete, and stalls only after `$ASE_TEST_STALL_PING_SEC` seconds
     (default `360`, scaled by the time factor), reported as `stall: only
-    keep-alive pings for <n>s`. Every message of
+    keep-alive pings for <n>s`. While a sub-agent call of the main thread
+    is open (the SDK streams nothing of a sub-agent), only the sub-agent's
+    messages and its growing token usage prove progress, and a silence
+    stalls only after `$ASE_TEST_STALL_SUB_SEC` seconds (default `300`,
+    scaled by the time factor), reported as `stall: sub-agent silent for
+    <n>s`. Every message of
     `transcript.jsonl` carries its receive time as `_receivedAt`. Once a
     minute, a `{"type":"harness","subtype":"stream_heartbeat"}` line records
     the streamed partial messages (counts per event type, characters, and
-    the tail of the streamed text, and `subagent`, the messages of
-    sub-agents, which do not stream). A stall wins over a later timeout, and
+    the tail of the streamed text, `subagent`, the messages of
+    sub-agents, which do not stream, and `subagentChars`, their output). A stall wins over a later timeout, and
     `result.json` records `stalled`, `stallAt`, `abortAt`, `sdkHung`, and
     `apiRetries`. An SDK which does not end its stream within 15 s after an
     abort is left behind (`sdkHung`), so no session outlasts its abort.
@@ -299,14 +313,21 @@ sessions use the automatic permission mode of the agent tool.
     `api_retry` never counts as progress of the stall watchdog.
 -   A *gateway slowdown* (the gateway streaming far below its normal
     throughput for every model at once) is a gateway error, too: a session
-    whose last 3 minutes with stream deltas averaged below
-    `$ASE_TEST_SLOW_CPS` chars/s (default `20`) notes itself once a minute
-    on the shared slowdown board `<outage file>.slow`, and a timeout or
-    stall of a session which ended that slow, while at least 3 sessions of
-    all runners noted themselves within the last 5 minutes, is reported as
-    `ended in a gateway slowdown (<n> chars/s)`, marks a gateway outage, and
-    is retried. A single slow session (a slow model) never suffices.
-    `result.json` records `slowStream` and `slowCps`.
+    whose median chars/s over its active minutes (main-thread stream deltas
+    plus sub-agent output) of the last 10 minutes (at least 3 of them) is
+    below its slow limit notes itself once a minute on the shared slowdown
+    board `<outage file>.slow`. The slow limit is `$ASE_TEST_SLOW_CPS`
+    chars/s (default `20`), resp. half of the model's own baseline (the
+    median of the last 200 active minutes of all sessions of the runner)
+    once 20 of them are known. A timeout or stall of a session which ended
+    that slow, while at least 3 sessions of all runners noted themselves
+    within the last 5 minutes, is reported as `ended in a gateway slowdown
+    (<n> chars/s)`, marks a gateway outage, and is retried; so is a timeout
+    or stall while a sub-agent was silent for at least 120 s and the
+    slowdown is confirmed within the last 10 minutes (`ended in a gateway
+    slowdown (sub-agent silent <n>s)`). A single slow session (a slow model)
+    never suffices. `result.json` records `slowStream`, `slowCps`, and
+    `subSilentSec`.
 -   After 3 consecutive infrastructure errors (other than gateway
     outages), the workers pause before scheduling further runs (60 s,
     doubling up to 300 s).
@@ -333,8 +354,11 @@ sessions use the automatic permission mode of the agent tool.
     as an outage can hit both the first attempt and its retry -- when its
     session crashed before the skill produced any output or the attempt
     threw (e.g. the sandbox creation failed), and only while the ceiling
-    is not hit. A timeout is never retried. The reported cost sums all
-    attempts. A session whose ASE MCP server failed to connect is an
+    is not hit. A timeout is never retried. A *startup crash* (an attempt
+    ending within 30 s with `Couldn't load settings from Cloud gateway`,
+    before any model call) does not count against these retries: it gets
+    up to 5 free retries of its own, each after 60-120 s. The reported
+    cost sums all attempts. A session whose ASE MCP server failed to connect is an
     infrastructure error and retried, too. An API refusal (e.g. HTTP 403
     for an inaccessible model) is an infrastructure error, retried only
     for HTTP 429 and 5xx. A simulator or judge completion is retried up
@@ -361,10 +385,14 @@ sessions use the automatic permission mode of the agent tool.
 -   A session stuck in a *tool loop* -- the very same tool call (incl.
     sub-agents) `$ASE_TEST_LOOP_MAX` times (default `12`), 25 fruitless
     tool results (errors or empty outputs) in a row, or more than
-    `$ASE_TEST_MAX_TOOL_CALLS` tool calls at all (default `150`, catching
-    loops of ever slightly varied calls) -- is aborted as a model failure
-    (`tool loop: …`, `looped` in `result.json`), never retried. Passing runs
-    reach at most 5, 4, resp. 48 of them.
+    `$ASE_TEST_MAX_TOOL_CALLS` tool calls at all (default `150`, resp. the
+    `maxToolCalls` of the case or stage, catching loops of ever slightly
+    varied calls) -- is aborted as a model failure (`tool loop: …`, `looped`
+    in `result.json`), never retried. Passing runs of most cases reach at
+    most 5, 4, resp. 48 of them (a spec lint about 100). `result.json`
+    records `agentTurns` and `toolCalls` as `<used>/<cap>`, and a passed
+    run using 80% or more of a cap is reported with a warning, as the cap
+    is likely too tight for weaker models.
 -   The cost of an aborted session is a lower bound: the live usages of
     the main thread are priced from `etc/pricing.yaml` (which lists the
     Anthropic reference models, too, for this lower bound only), while the

@@ -3,6 +3,7 @@ args: "--max-parts 3"
 runs: 2
 minPass: 1
 timeoutSec: 900
+maxAgentTurns: 64
 budget: { maxUsd: 3.50 }
 fixture:
   git: true

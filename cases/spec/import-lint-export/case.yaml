@@ -10,6 +10,7 @@ stages:
   - skill: ase-spec-lint
     args: "--auto"
     timeoutSec: 1200
+    maxToolCalls: 300
     budget: { maxUsd: 5.00 }
   - skill: ase-sync-export
     args: "--output docs/spec.html"

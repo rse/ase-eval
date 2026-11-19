@@ -109,11 +109,12 @@ const llmTextRetried = async (sandbox: Sandbox, model: string,
 
 /*  the completion of the simulator and the judge, where a safeguard refusal of the
     reference model (deterministic for the prompt, and frequent for the transcripts
-    of weaker models) is repeated once with the fallback reference model  */
-export const llmText = async (sandbox: Sandbox, model: string,
-    system: string, prompt: string): Promise<string> => {
+    of weaker models) is repeated once with the fallback reference model, together
+    with the model which actually answered  */
+export const llmTextFrom = async (sandbox: Sandbox, model: string,
+    system: string, prompt: string): Promise<{ text: string, model: string }> => {
     try {
-        return await llmTextRetried(sandbox, model, system, prompt)
+        return { text: await llmTextRetried(sandbox, model, system, prompt), model }
     }
     catch (err) {
         const fallback = process.env.ASE_TEST_REF_FALLBACK ?? ""
@@ -122,6 +123,9 @@ export const llmText = async (sandbox: Sandbox, model: string,
             throw err
         llmSpend.fallbacks += 1
         console.log(chalk.yellow(`⚠ judge/simulator: safeguards refused "${model}" -- falling back to "${fallback}"`))
-        return llmTextRetried(sandbox, fallback, system, prompt)
+        return { text: await llmTextRetried(sandbox, fallback, system, prompt), model: fallback }
     }
 }
+export const llmText = async (sandbox: Sandbox, model: string,
+    system: string, prompt: string): Promise<string> =>
+    (await llmTextFrom(sandbox, model, system, prompt)).text

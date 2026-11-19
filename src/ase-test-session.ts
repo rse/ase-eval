@@ -25,6 +25,16 @@ import { slowNote, slowConfirmed }   from "./ase-test-outage.js"
 export const liveAborts = new Set<AbortController>()
 export const sessionInterrupt = { on: false }
 
+/*  the streamed chars per second of the active minutes of all sessions of this
+    runner (one runner process drives one model), whose median is the model's own
+    throughput baseline of the slow-stream watch  */
+const runnerCps: number[] = []
+const median = (values: number[]): number => {
+    const sorted = [ ...values ].sort((a, b) => a - b)
+    const mid    = Math.floor(sorted.length / 2)
+    return sorted.length % 2 === 1 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+}
+
 /*  the recorder callbacks of a session run  */
 export type SessionRecord = {
     onMessage: (msg: Record<string, any>) => void
@@ -47,9 +57,12 @@ export type SessionRecord = {
     resp. the session was aborted, "sdkHung" a session whose SDK did not end
     after the abort, "looped" one aborted by the tool-loop stop, "unparsedInputs"
     the tool calls whose input was no valid JSON, "slowStream"/"slowCps" one
-    ending in a confirmed gateway slowdown resp. its last streamed chars per
-    second, "costLowerBound" an aborted session whose sub-agent costs are
-    missing, and "costBasis" tells how "costUsd" was priced)  */
+    ending in a confirmed gateway slowdown resp. its recent median streamed chars
+    per second, "costLowerBound" an aborted session whose sub-agent costs are
+    missing, "costBasis" tells how "costUsd" was priced, "agentTurns"/"toolCalls"
+    the used agentic turns resp. tool calls against their caps "agentTurnsMax"/
+    "toolCallsMax", and "subSilentSec" the silence of a still open sub-agent at
+    the end of the session)  */
 export type SessionResult = {
     messages:     Record<string, any>[]
     output:       string[]
@@ -83,6 +96,11 @@ export type SessionResult = {
     slowCps:      number
     costLowerBound: boolean
     costBasis:    CostBasis
+    agentTurns:   number
+    agentTurnsMax: number
+    toolCalls:    number
+    toolCallsMax: number
+    subSilentSec: number
 }
 
 /*  render the invocation of the skill <skill> with the arguments <args>, adding the
@@ -104,7 +122,8 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         costUsd: 0, costAccurate: true, turns: 0, errored: false, crashed: false, timedOut: false, stalled: false, failure: "",
         stopReason: "", apiStatus: null, mcpFailed: false, simFailed: false, budgetHit: false, apiFlaky: "",
         apiRetries: 0, apiRetryText: "", lastApiRetryAt: 0, stallAt: "", abortAt: "", sdkHung: false,
-        looped: false, unparsedInputs: 0, slowStream: false, slowCps: 0, costLowerBound: false, costBasis: "sdk"
+        looped: false, unparsedInputs: 0, slowStream: false, slowCps: 0, costLowerBound: false, costBasis: "sdk",
+        agentTurns: 0, agentTurnsMax: 0, toolCalls: 0, toolCallsMax: 0, subSilentSec: 0
     }
     const prompt = stage.skill !== "" ? skillPrompt(stage.skill, stage.args) : stage.prompt
 
@@ -184,6 +203,17 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
     let   lastProgressAt = Date.now()
     let   stallFailure   = ""
 
+    /*  a main thread waiting for an open sub-agent call ("Agent"/"Task") streams
+        nothing, and the SDK streams nothing of the sub-agent either, so only its
+        messages (and its growing token usage) prove progress, while the periodic
+        "tool_progress" keep-alives of the waiting tool do not: such a silence gets
+        the longer limit "subStallSec" (scaled by the time factor), as a sub-agent
+        may legitimately generate a large response for minutes  */
+    const subStallSec = Number(process.env.ASE_TEST_STALL_SUB_SEC ?? "300") *
+        Number(process.env.ASE_TEST_TIME_FACTOR ?? "1")
+    const openAgents  = new Set<string>()
+    const taskTokens  = new Map<string, number>()
+
     /*  the thinking progress since the last re-arm of the stall watchdog: a stream
         trickling a few thinking tokens for minutes is as stuck as a silent one,
         so only a real progress re-arms the watchdog  */
@@ -203,8 +233,13 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
             stallTimer = setTimeout(stallFire, Math.min(30 * 1000, lastProgressAt + pingStallSec * 1000 - now))
             return
         }
-        stallFailure   = silent > stallSec + 30 ? `stall: only keep-alive pings for ${silent}s` :
-            `stall: no progress for ${stallSec}s`
+        if (openAgents.size > 0 && now - lastProgressAt < subStallSec * 1000) {
+            stallTimer = setTimeout(stallFire, Math.min(30 * 1000, lastProgressAt + subStallSec * 1000 - now))
+            return
+        }
+        stallFailure   = openAgents.size > 0 ? `stall: sub-agent silent for ${silent}s` :
+            silent > stallSec + 30 ? `stall: only keep-alive pings for ${silent}s` :
+                `stall: no progress for ${stallSec}s`
         result.stalled = true
         result.stallAt = new Date().toISOString()
         abort.abort()
@@ -218,9 +253,11 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         stallTimer = setTimeout(stallFire, stallSec * 1000)
     }
 
-    /*  whether a session message proves progress: any regular message, any stream
-        event except a keep-alive "ping" and a thinking delta, and thinking (deltas
-        resp. "thinking_tokens" estimates) only once it adds up to "stallMinTokens"  */
+    /*  whether a session message proves progress: any regular message except the
+        keep-alives of a waiting sub-agent call (resp. its progress reports without
+        token growth), any stream event except a keep-alive "ping" and a thinking
+        delta, and thinking (deltas resp. "thinking_tokens" estimates) only once it
+        adds up to "stallMinTokens"  */
     const progress = (msg: Record<string, any>): boolean => {
         let tokens: number
         if (msg.type === "stream_event") {
@@ -236,6 +273,15 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         }
         else if (msg.type === "system" && msg.subtype === "api_retry")
             return false
+        else if (msg.type === "tool_progress" && /^(?:Agent|Task)$/.test(String(msg.tool_name ?? "")))
+            return false
+        else if (msg.type === "system" && msg.subtype === "task_progress") {
+            const id    = String(msg.task_id ?? "")
+            const total = Number(msg.usage?.total_tokens ?? 0)
+            const grew  = total > (taskTokens.get(id) ?? 0)
+            taskTokens.set(id, Math.max(total, taskTokens.get(id) ?? 0))
+            return grew
+        }
         else if (msg.type === "system" && msg.subtype === "thinking_tokens")
             tokens = Number(msg.estimated_tokens_delta ?? 1)
         else
@@ -297,6 +343,7 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         settings, automatically classified permissions, and a hard budget and turn cap
         (the SDK "maxTurns" counts agentic turns: a generous 4 per allowed user turn,
         resp. 32 for a single-shot session, as a mere runaway backstop)  */
+    result.agentTurnsMax = stage.maxAgentTurns ?? (simulator !== null ? stage.turns!.maxTurns * 4 : 32)
     const options: Options = {
         cwd:             sandbox.project,
         env:             sandbox.env,
@@ -304,7 +351,7 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         settingSources:  [ "user" ],
         ...(Object.keys(sandbox.mcpServers).length > 0 ? { mcpServers: sandbox.mcpServers as Options["mcpServers"] } : {}),
         permissionMode:  stage.permissionMode,
-        maxTurns:        stage.maxAgentTurns ?? (simulator !== null ? stage.turns!.maxTurns * 4 : 32),
+        maxTurns:        result.agentTurnsMax,
         includePartialMessages: true,
         maxBudgetUsd:    stage.maxUsd * pricingBudgetScale(process.env.ASE_TEST_MODEL ?? ""),
         abortController: abort,
@@ -357,11 +404,13 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         tool results (errors or empty outputs) in a row, is stuck in a loop and
         aborted as a model failure, instead of burning its budget until the timeout
         (passing runs reach at most 5 resp. 4 of them), or making more than
-        "toolMax" tool calls at all, which catches the loops of ever slightly varied
-        calls (passing runs make at most 48 of them)  */
+        "toolMax" tool calls at all (the "maxToolCalls" of the case, as e.g. a spec
+        lint needs about 100), which catches the loops of ever slightly varied calls
+        (passing runs of most cases make at most 48 of them)  */
     const loopMax    = Number(process.env.ASE_TEST_LOOP_MAX ?? "12")
     const loopErrMax = 25
-    const toolMax    = Number(process.env.ASE_TEST_MAX_TOOL_CALLS ?? "150")
+    const toolMax    = stage.maxToolCalls ?? Number(process.env.ASE_TEST_MAX_TOOL_CALLS ?? "150")
+    result.toolCallsMax = toolMax
     let   toolCalls  = 0
     const loopCalls  = new Map<string, number>()
     let   loopErrors = 0
@@ -415,41 +464,53 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
     }
     let subagentMsgs  = 0
     let subagentTotal = 0
+    let subagentChars = 0
     let streamCall    = { id: "", model: "" }
 
-    /*  the slow-stream watch: the streamed chars per second of the last minutes
-        with stream deltas, where a session streaming below "slowCps" on average
-        over its last 3 such minutes (within 5 minutes) notes itself on the shared
-        slowdown board, as a gateway slowdown hits many sessions at once  */
-    const slowCps  = Number(process.env.ASE_TEST_SLOW_CPS ?? "20")
-    const slowKey  = crypto.randomUUID()
+    /*  the slow-stream watch: the streamed chars per second of the last active
+        minutes (with main-thread stream deltas resp. sub-agent output), where a
+        session whose median over the active minutes of the last 10 minutes (at
+        least 3 of them) falls below its slow limit notes itself on the shared
+        slowdown board, as a gateway slowdown hits many sessions at once; the slow
+        limit is the absolute "slowCps", resp. half of the model's own baseline
+        (the median of all active minutes of this runner) once it is known  */
+    const slowCps   = Number(process.env.ASE_TEST_SLOW_CPS ?? "20")
+    const slowKey   = crypto.randomUUID()
     const slowRing: { at: number, cps: number }[] = []
-    const slowMean = (now: number): number | null => {
-        const recent = slowRing.filter((e) => now - e.at <= 6 * 60 * 1000).slice(-3)
-        return recent.length < 3 ? null : recent.reduce((sum, e) => sum + e.cps, 0) / recent.length
+    const slowLevel = (now: number): number | null => {
+        const recent = slowRing.filter((e) => now - e.at <= 10 * 60 * 1000)
+        return recent.length < 3 ? null : median(recent.map((e) => e.cps))
     }
+    const slowLimit = (): number =>
+        runnerCps.length >= 20 ? Math.max(slowCps, 0.5 * median(runnerCps)) : slowCps
     const heartbeat = setInterval(() => {
         if (Object.keys(streamCounts).length === 0 && subagentMsgs === 0)
             return
         const deltas = Object.entries(streamCounts)
             .filter(([ key ]) => key.startsWith("content_block_delta/"))
             .reduce((sum, [ , n ]) => sum + n, 0)
-        if (deltas >= 1) {
+        if (deltas >= 1 || subagentChars > 0) {
             const now = Date.now()
-            slowRing.push({ at: now, cps: streamChars / 60 })
-            if (slowRing.length > 5)
+            const cps = (streamChars + subagentChars) / 60
+            slowRing.push({ at: now, cps })
+            if (slowRing.length > 10)
                 slowRing.shift()
-            const mean = slowMean(now)
-            if (mean !== null && mean < slowCps)
+            runnerCps.push(cps)
+            if (runnerCps.length > 200)
+                runnerCps.shift()
+            const level = slowLevel(now)
+            if (level !== null && level < slowLimit())
                 slowNote(slowKey)
         }
         record.onMessage({
             type: "harness", subtype: "stream_heartbeat",
-            counts: streamCounts, chars: streamChars, tail: streamTail, subagent: subagentMsgs
+            counts: streamCounts, chars: streamChars, tail: streamTail, subagent: subagentMsgs,
+            subagentChars
         })
-        streamCounts = {}
-        streamChars  = 0
-        subagentMsgs = 0
+        streamCounts  = {}
+        streamChars   = 0
+        subagentMsgs  = 0
+        subagentChars = 0
     }, 60 * 1000)
 
     /*  drive the conversation  */
@@ -488,9 +549,25 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
             }
             record.onMessage(msg as Record<string, any>)
             result.messages.push(msg as Record<string, any>)
+            const parts  = Array.isArray((msg as Record<string, any>).message?.content) ?
+                (msg as Record<string, any>).message.content as Record<string, any>[] : []
             if ((msg as { parent_tool_use_id?: string | null }).parent_tool_use_id) {
                 subagentMsgs  += 1
                 subagentTotal += 1
+
+                /*  the sub-agent output (text and tool inputs) as its streamed chars  */
+                if (msg.type === "assistant")
+                    for (const block of parts)
+                        subagentChars += block.type === "text" ? String(block.text ?? "").length :
+                            block.type === "tool_use" ? JSON.stringify(block.input ?? {}).length : 0
+            }
+            else {
+                /*  the open sub-agent calls of the main thread  */
+                for (const block of parts)
+                    if (msg.type === "assistant" && block.type === "tool_use" && /^(?:Agent|Task)$/.test(String(block.name)))
+                        openAgents.add(String(block.id))
+                    else if (msg.type === "user" && block.type === "tool_result")
+                        openAgents.delete(String(block.tool_use_id))
             }
             loopWatch(msg as Record<string, any>)
             if (msg.type === "system" && msg.subtype === "init") {
@@ -532,7 +609,8 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
                     }
             }
             else if (msg.type === "result") {
-                result.turns  += 1
+                result.turns      += 1
+                result.agentTurns  = Math.max(result.agentTurns, Number((msg as { num_turns?: number }).num_turns ?? 0))
 
                 /*  the cost is cumulative, so the latest value replaces the previous one,
                     but a crash result may carry a zeroed cost which must never erase the
@@ -621,11 +699,14 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         result.costBasis = "table"
     }
     /*  a timeout or stall amid a slow stream, confirmed by other sessions as a
-        gateway slowdown, says nothing about the model  */
+        gateway slowdown, says nothing about the model, and neither does one while
+        a sub-agent stayed silent (see "gatewayEnd" of "ase-test.ts")  */
+    result.toolCalls = toolCalls
     if (result.timedOut || result.stalled) {
-        const mean = slowMean(Date.now())
-        result.slowCps    = mean ?? 0
-        result.slowStream = mean !== null && mean < slowCps && slowConfirmed(Date.now() - 5 * 60 * 1000)
+        const level = slowLevel(Date.now())
+        result.slowCps      = level ?? 0
+        result.slowStream   = level !== null && level < slowLimit() && slowConfirmed(Date.now() - 5 * 60 * 1000)
+        result.subSilentSec = openAgents.size > 0 ? Math.round((Date.now() - lastProgressAt) / 1000) : 0
     }
 
     /*  the costs of an aborted session with sub-agents are a mere lower bound,

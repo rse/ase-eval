@@ -1,5 +1,6 @@
 node_modules/
 package-lock.json
 results/
+reports/
 etc/llm-*.env
 .DS_Store

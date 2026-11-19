@@ -43,7 +43,9 @@ export type SessionRecord = {
     "lastApiRetryAt" the API retries of the agent tool itself (e.g. after an
     HTTP 504 of the gateway), "stallAt"/"abortAt" when the stall watchdog fired
     resp. the session was aborted, "sdkHung" a session whose SDK did not end
-    after the abort, and "costBasis" tells how "costUsd" was priced)  */
+    after the abort, "looped" one aborted by the tool-loop stop, "unparsedInputs"
+    the tool calls whose input was no valid JSON, and "costBasis" tells how
+    "costUsd" was priced)  */
 export type SessionResult = {
     messages:     Record<string, any>[]
     output:       string[]
@@ -71,6 +73,8 @@ export type SessionResult = {
     stallAt:      string
     abortAt:      string
     sdkHung:      boolean
+    looped:       boolean
+    unparsedInputs: number
     costBasis:    CostBasis
 }
 
@@ -92,7 +96,8 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         messages: [], output: [], lastText: "", dialog: [], sessionId: "", model: "",
         costUsd: 0, costAccurate: true, turns: 0, errored: false, crashed: false, timedOut: false, stalled: false, failure: "",
         stopReason: "", apiStatus: null, mcpFailed: false, simFailed: false, budgetHit: false, apiFlaky: "",
-        apiRetries: 0, apiRetryText: "", lastApiRetryAt: 0, stallAt: "", abortAt: "", sdkHung: false, costBasis: "sdk"
+        apiRetries: 0, apiRetryText: "", lastApiRetryAt: 0, stallAt: "", abortAt: "", sdkHung: false,
+        looped: false, unparsedInputs: 0, costBasis: "sdk"
     }
     const prompt = stage.skill !== "" ? skillPrompt(stage.skill, stage.args) : stage.prompt
 
@@ -162,9 +167,19 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
     const stallSec = Number(process.env.ASE_TEST_STALL_SEC ?? "120")
     let stallTimer: ReturnType<typeof setTimeout> | null = null
 
+    /*  a stream of only keep-alive "ping" events proves the gateway alive, but not
+        the model progressing (e.g. an upstream which delivers a large response only
+        once it is complete), so it gets the longer limit "pingStallSec" (scaled by
+        the time factor), as long as its last ping is at most 60 s old  */
+    const pingStallSec   = Number(process.env.ASE_TEST_STALL_PING_SEC ?? "360") *
+        Number(process.env.ASE_TEST_TIME_FACTOR ?? "1")
+    let   lastPingAt     = 0
+    let   lastProgressAt = Date.now()
+    let   stallFailure   = ""
+
     /*  the thinking progress since the last re-arm of the stall watchdog: a stream
-        trickling a few thinking tokens (or only "ping" events) for minutes is as
-        stuck as a silent one, so only a real progress re-arms the watchdog  */
+        trickling a few thinking tokens for minutes is as stuck as a silent one,
+        so only a real progress re-arms the watchdog  */
     const stallMinTokens   = Number(process.env.ASE_TEST_STALL_MIN_TOKENS ?? "50")
     let   thinkingSinceArm = 0
     const stallDisarm = () => {
@@ -172,18 +187,28 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
             clearTimeout(stallTimer)
         stallTimer = null
     }
+    const stallFire = () => {
+        if (finished || result.timedOut)
+            return
+        const now    = Date.now()
+        const silent = Math.round((now - lastProgressAt) / 1000)
+        if (now - lastPingAt <= 60 * 1000 && now - lastProgressAt < pingStallSec * 1000) {
+            stallTimer = setTimeout(stallFire, Math.min(30 * 1000, lastProgressAt + pingStallSec * 1000 - now))
+            return
+        }
+        stallFailure   = silent > stallSec + 30 ? `stall: only keep-alive pings for ${silent}s` :
+            `stall: no progress for ${stallSec}s`
+        result.stalled = true
+        result.stallAt = new Date().toISOString()
+        abort.abort()
+    }
     const stallArm = () => {
         stallDisarm()
         thinkingSinceArm = 0
+        lastProgressAt   = Date.now()
         if (!Number.isFinite(stallSec) || stallSec <= 0)
             return
-        stallTimer = setTimeout(() => {
-            if (finished || result.timedOut)
-                return
-            result.stalled = true
-            result.stallAt = new Date().toISOString()
-            abort.abort()
-        }, stallSec * 1000)
+        stallTimer = setTimeout(stallFire, stallSec * 1000)
     }
 
     /*  whether a session message proves progress: any regular message, any stream
@@ -193,8 +218,10 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         let tokens: number
         if (msg.type === "stream_event") {
             const event = msg.event ?? {}
-            if (event.type === "ping")
+            if (event.type === "ping") {
+                lastPingAt = Date.now()
                 return false
+            }
             if (event.type === "content_block_delta" && event.delta?.type === "thinking_delta")
                 tokens = Math.ceil(String(event.delta.thinking ?? "").length / 4)
             else
@@ -232,15 +259,19 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
     /*  the live budget watchdog of a table-priced model, whose SDK budget cap is
         scaled up to a mere backstop: the per-call usages (keyed by message id, as
         the content blocks of one call arrive as several messages) are priced from
-        the table, and the session is aborted once they exceed the stage budget  */
+        the table, and the session is aborted once they exceed the stage budget;
+        behind a gateway, the assistant messages carry zeroed usages and the real
+        ones arrive only in the "message_delta" stream events, so a call keeps the
+        highest of its priced usages  */
     const callCosts = new Map<string, number>()
     let liveUsd     = 0
     const budgetWatch = (msg: Record<string, any>) => {
         const usage = msg.message?.usage
         const cost  = usage !== undefined ? pricingCallCost(String(msg.message?.model ?? ""), usage) : null
-        if (cost === null)
+        if (cost === null || cost <= 0)
             return
-        callCosts.set(String(msg.message?.id ?? callCosts.size), cost)
+        const id = String(msg.message?.id ?? callCosts.size)
+        callCosts.set(id, Math.max(callCosts.get(id) ?? 0, cost))
         liveUsd = [ ...callCosts.values() ].reduce((sum, c) => sum + c, 0)
         if (liveUsd > stage.maxUsd && !result.budgetHit) {
             result.budgetHit = true
@@ -313,6 +344,44 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         record.onMessage({ type: "user", synthetic: true, message: { role: "user", content: text } })
     }
 
+    /*  the tool-loop stop: a session repeating the very same tool call (of the main
+        thread or a sub-agent) "loopMax" times, or receiving "loopErrMax" fruitless
+        tool results (errors or empty outputs) in a row, is stuck in a loop and
+        aborted as a model failure, instead of burning its budget until the timeout
+        (passing runs reach at most 5 resp. 4 of them)  */
+    const loopMax    = Number(process.env.ASE_TEST_LOOP_MAX ?? "12")
+    const loopErrMax = 25
+    const loopCalls  = new Map<string, number>()
+    let   loopErrors = 0
+    let   loopFailure = ""
+    const loopWatch = (msg: Record<string, any>) => {
+        const blocks = Array.isArray(msg.message?.content) ? msg.message.content as Record<string, any>[] : []
+        for (const block of blocks) {
+            if (msg.type === "assistant" && block.type === "tool_use") {
+                const input = JSON.stringify(block.input ?? {})
+                if (input.includes("__unparsedToolInput"))
+                    result.unparsedInputs += 1
+                const key   = `${String(block.name)} ${input}`
+                const count = (loopCalls.get(key) ?? 0) + 1
+                loopCalls.set(key, count)
+                if (count >= loopMax && loopFailure === "")
+                    loopFailure = `tool loop: "${String(block.name)}" called ${count}x with the same input`
+            }
+            else if (msg.type === "user" && block.type === "tool_result") {
+                const text = typeof block.content === "string" ? block.content : JSON.stringify(block.content ?? "")
+                const fruitless = block.is_error === true || text.includes("<tool_use_error>")
+                    || text.includes("completed with no output") || /^\s*(?:""|\[\])?\s*$/.test(text)
+                loopErrors = fruitless ? loopErrors + 1 : 0
+                if (loopErrors >= loopErrMax && loopFailure === "")
+                    loopFailure = `tool loop: ${loopErrors} fruitless tool results (errors or empty outputs) in a row`
+            }
+        }
+        if (loopFailure !== "" && !result.looped && Number.isFinite(loopMax) && loopMax > 0) {
+            result.looped = true
+            abort.abort()
+        }
+    }
+
     /*  the stream heartbeat: the streamed partial messages are not recorded one
         by one, so once a minute their event types, the streamed characters, and
         the tail of the streamed text are recorded, which tells a model streaming
@@ -329,12 +398,18 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         streamChars += text.length
         streamTail   = (streamTail + text).slice(-200)
     }
+    let subagentMsgs = 0
+    let streamCall   = { id: "", model: "" }
     const heartbeat = setInterval(() => {
-        if (Object.keys(streamCounts).length === 0)
+        if (Object.keys(streamCounts).length === 0 && subagentMsgs === 0)
             return
-        record.onMessage({ type: "harness", subtype: "stream_heartbeat", counts: streamCounts, chars: streamChars, tail: streamTail })
+        record.onMessage({
+            type: "harness", subtype: "stream_heartbeat",
+            counts: streamCounts, chars: streamChars, tail: streamTail, subagent: subagentMsgs
+        })
         streamCounts = {}
         streamChars  = 0
+        subagentMsgs = 0
     }, 60 * 1000)
 
     /*  drive the conversation  */
@@ -359,7 +434,12 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
 
             /*  the streamed partial messages only prove the session alive  */
             if (msg.type === "stream_event") {
-                streamNote((msg as { event?: Record<string, any> }).event ?? {})
+                const event = (msg as { event?: Record<string, any> }).event ?? {}
+                streamNote(event)
+                if (event.type === "message_start")
+                    streamCall = { id: String(event.message?.id ?? ""), model: String(event.message?.model ?? "") }
+                else if (event.type === "message_delta" && event.usage !== undefined && streamCall.id !== "")
+                    budgetWatch({ message: { ...streamCall, usage: event.usage } })
                 continue
             }
             if (planApproved && !planSwitched) {
@@ -368,6 +448,9 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
             }
             record.onMessage(msg as Record<string, any>)
             result.messages.push(msg as Record<string, any>)
+            if ((msg as { parent_tool_use_id?: string | null }).parent_tool_use_id)
+                subagentMsgs += 1
+            loopWatch(msg as Record<string, any>)
             if (msg.type === "system" && msg.subtype === "init") {
                 result.sessionId = msg.session_id
                 result.model     = msg.model
@@ -459,6 +542,10 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
             if (result.failure === "" || err instanceof SimulatorError)
                 result.failure = err instanceof SimulatorError ? err.message : result.failure
         }
+        else if (result.looped) {
+            result.costAccurate = false
+            result.failure      = loopFailure
+        }
         else if (result.budgetHit) {
             result.stopReason = "error_max_budget_usd"
             result.failure    = `session error: error_max_budget_usd (table-priced $${liveUsd.toFixed(2)} ` +
@@ -467,7 +554,7 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         else if (result.stopReason === "" || result.timedOut || result.stalled) {
             result.crashed      = !result.timedOut && !result.stalled
             result.costAccurate = false
-            result.failure      = result.stalled ? `stall: no progress for ${stallSec}s` :
+            result.failure      = result.stalled ? stallFailure :
                 result.timedOut ? `timeout after ${stage.timeoutSec}s` :
                     `session crashed: ${err instanceof Error ? err.message : String(err)}`
         }
@@ -491,11 +578,17 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         result.costUsd   = liveUsd
         result.costBasis = "table"
     }
-    if (result.stalled) {
+    if (result.looped) {
         result.errored      = true
         result.costAccurate = false
         if (result.failure === "")
-            result.failure = `stall: no progress for ${stallSec}s`
+            result.failure = loopFailure
+    }
+    else if (result.stalled) {
+        result.errored      = true
+        result.costAccurate = false
+        if (result.failure === "")
+            result.failure = stallFailure
     }
     else if (result.timedOut) {
         result.errored      = true

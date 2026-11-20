@@ -95,18 +95,38 @@ Promise<{ kind: string, pass: boolean, detail: string, scores?: number[], log?: 
     }
 }
 
-/*  judge the output of one run against a rubric  */
+/*  the changed files of a unified diff with their added and removed line counts  */
+const diffStat = (diff: string): string => {
+    const files: { name: string, added: number, removed: number }[] = []
+    for (const line of diff.split("\n")) {
+        const header = /^diff --git a\/(.+?) b\/(.+)$/.exec(line)
+        if (header !== null)
+            files.push({ name: header[2], added: 0, removed: 0 })
+        else if (files.length > 0 && line.startsWith("+") && !line.startsWith("+++"))
+            files[files.length - 1].added += 1
+        else if (files.length > 0 && line.startsWith("-") && !line.startsWith("---"))
+            files[files.length - 1].removed += 1
+    }
+    return files.length === 0 ? "(no files changed)" :
+        files.slice(0, 50).map((file) => `- \`${file.name}\`: +${file.added} / -${file.removed} lines`).join("\n")
+}
+
+/*  judge the output of one run against a rubric, optionally with the changed files
+    of the session as ground truth (the reply alone need not narrate a file change)  */
 export const judgeRubric = async (sandbox: Sandbox, result: SessionResult,
-    spec: { file: string, threshold: number, votes: number }):
+    spec: { file: string, threshold: number, votes: number, evidence: "none" | "diffstat" }, diff = ""):
 Promise<{ kind: string, pass: boolean, detail: string, scores?: number[], log?: string }> => {
     const rubric = fs.readFileSync(spec.file, "utf8")
     const output = result.output.join("\n").slice(0, TEXT_MAX)
     const system =
         "You are a strict, impartial evaluator of the output of an AI coding assistant skill.\n" +
         "Score how well the output satisfies the rubric, from 0.0 (not at all) to 1.0 (fully).\n" +
+        (spec.evidence === "diffstat" ? "The section \"Files Changed by the Session\" is ground truth " +
+            "measured by the test harness, not part of the output.\n" : "") +
         "Respond with a single JSON object of the form { \"score\": <number>, \"reason\": \"<one sentence>\" } " +
         "only, without using any tools."
-    const prompt = `# Rubric\n\n${rubric}\n\n# Output Under Evaluation\n\n${output}`
+    const prompt = `# Rubric\n\n${rubric}\n\n# Output Under Evaluation\n\n${output}` +
+        (spec.evidence === "diffstat" ? `\n\n# Files Changed by the Session\n\n${diffStat(diff)}` : "")
     return judgeVotes(sandbox, system, prompt, spec.threshold, spec.votes, "rubric")
 }
 

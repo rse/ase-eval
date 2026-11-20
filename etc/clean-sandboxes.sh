@@ -5,18 +5,45 @@
 ##  any service process still running in one, and remove the sandboxes,
 ##  sparing sandboxes younger than one minute (live runs)
 ##
-##  Usage: etc/clean-sandboxes.sh [--dry-run]
+##  Usage: etc/clean-sandboxes.sh [--dry-run] [--auto]
+##
+##  With "--auto" (as called by the run scripts), nothing is cleaned while
+##  another harness run is live, and the sandboxes kept on purpose ("-k"/"-K",
+##  marked by a ".keep" file) are spared, too.
 ##
 
 set -uo pipefail
 
 dry=""
-[[ "${1:-}" == "--dry-run" ]] && dry="yes"
+auto=""
+for arg in "$@"; do
+    case "$arg" in
+        --dry-run ) dry="yes" ;;
+        --auto )    auto="yes" ;;
+    esac
+done
 tmp="${TMPDIR:-/tmp}"
 tmp="${tmp%/}"
 
-#   the sandboxes older than one minute
-mapfile -t dirs < <(find "$tmp" -maxdepth 1 -type d -name 'ase-test-*' -mmin +1 2>/dev/null)
+#   in automatic mode, never touch the sandboxes of a live harness run
+if [[ -n "$auto" ]]; then
+    for lock in "$(dirname "$0")"/../results/.running-*; do
+        [[ -e "$lock" ]] || continue
+        pid="${lock##*-}"
+        if kill -0 "$pid" 2>/dev/null; then
+            echo "sandbox cleanup skipped: harness run (pid $pid) is live"
+            exit 0
+        fi
+    done
+fi
+
+#   the sandboxes older than one minute (in automatic mode without the kept ones)
+mapfile -t dirs < <(find "$tmp" -maxdepth 1 -type d -name 'ase-test-*' -mmin +1 2>/dev/null |
+    while read -r dir; do
+        [[ -n "$auto" && -e "$dir/.keep" ]] && continue
+        echo "$dir"
+    done)
+[[ -n "$auto" && ${#dirs[@]} -eq 0 ]] && exit 0
 
 #   stop their services the regular way first
 for dir in "${dirs[@]}"; do

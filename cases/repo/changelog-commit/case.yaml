@@ -34,3 +34,4 @@ oracles:
   - rubric:
       file: rubric.md
       threshold: 0.7
+      evidence: diffstat

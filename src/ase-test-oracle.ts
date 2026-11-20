@@ -395,7 +395,7 @@ export const oraclesRun = async (oracles: OracleSpec[], caze: TestCase, sandbox:
             })
         }
         else if ("rubric" in oracle)
-            results.push(await judgeRubric(sandbox, result, oracle.rubric))
+            results.push(await judgeRubric(sandbox, result, oracle.rubric, diff))
         else if ("similar" in oracle) {
             const spec = oracle.similar
             const text = targetText(spec, caze, sandbox, result)

@@ -34,21 +34,62 @@ export type Sandbox = {
 const git = async (sandbox: Pick<Sandbox, "project" | "env">, args: string[]) =>
     execa("git", args, { cwd: sandbox.project, env: sandbox.env, extendEnv: false, stdin: "ignore", timeout: 60 * 1000 })
 
+/*  the OAuth credentials file of the real HOME  */
+export const credentialsFile = path.join(os.homedir(), ".claude", ".credentials.json")
+
 /*  ensure the agent tool can authenticate inside the sandboxed HOME: an API key or
     OAuth token environment variable is passed through, else the OAuth credentials
-    file of the real HOME is copied into the sandboxed one  */
+    file of the real HOME is linked (not copied) into the sandboxed one, so all
+    sessions share one token store (independently refreshed copies of a rotating
+    refresh token can make the gateway revoke the whole login)  */
 const credentials = (home: string, env: Record<string, string>): void => {
     if (process.env.ANTHROPIC_API_KEY !== undefined)
         env.ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY
     else if (process.env.CLAUDE_CODE_OAUTH_TOKEN !== undefined)
         env.CLAUDE_CODE_OAUTH_TOKEN = process.env.CLAUDE_CODE_OAUTH_TOKEN
     else {
-        const file = path.join(os.homedir(), ".claude", ".credentials.json")
-        if (!fs.existsSync(file))
+        if (!fs.existsSync(credentialsFile))
             throw new Error("no agent tool credentials found: set ANTHROPIC_API_KEY or " +
                 "CLAUDE_CODE_OAUTH_TOKEN, or login once so \"~/.claude/.credentials.json\" exists")
-        fs.copyFileSync(file, path.join(home, ".claude", ".credentials.json"))
+        fs.symlinkSync(credentialsFile, path.join(home, ".claude", ".credentials.json"), "file")
     }
+}
+
+/*  the expiry of the agent tool login of a credentials file: the gateway token,
+    else the claude.ai OAuth token (0 if none or unreadable), while the tokens of
+    MCP servers are short-lived by design and refreshed on their own  */
+export const credentialsExpiry = (file: string): number => {
+    try {
+        const data = JSON.parse(fs.readFileSync(file, "utf8")) as
+            { enterpriseGateway?: { expiresAt?: unknown }, claudeAiOauth?: { expiresAt?: unknown } }
+        const value = data.enterpriseGateway?.expiresAt ?? data.claudeAiOauth?.expiresAt
+        return typeof value === "number" ? (value > 1e12 ? value : value * 1000) : 0
+    }
+    catch (_err) {
+        return 0
+    }
+}
+
+/*  write the credentials of a sandboxed HOME back into the real HOME, if the agent
+    tool replaced the link by a regular file (an atomic rewrite on a token refresh,
+    which may rotate the refresh token without changing the expiry) later than the
+    real file was written, so later sandboxes do not start with stale tokens  */
+const credentialsWriteBack = async (home: string): Promise<void> => {
+    const file = path.join(home, ".claude", ".credentials.json")
+    const stat = await fs.promises.lstat(file).catch(() => null)
+    if (stat === null || stat.isSymbolicLink() || !stat.isFile())
+        return
+    const real = await fs.promises.stat(credentialsFile).catch(() => null)
+    if (real !== null && stat.mtimeMs <= real.mtimeMs)
+        return
+    const [ fresh, stale ] = await Promise.all([ fs.promises.readFile(file, "utf8"),
+        fs.promises.readFile(credentialsFile, "utf8").catch(() => "") ])
+    if (fresh === stale)
+        return
+    const tmp = `${credentialsFile}.${process.pid}.tmp`
+    await fs.promises.copyFile(file, tmp)
+    await fs.promises.chmod(tmp, 0o600)
+    await fs.promises.rename(tmp, credentialsFile)
 }
 
 /*  create the sandbox of a single test run and materialize the fixture of the case:
@@ -94,6 +135,14 @@ const sandboxPopulate = async (caze: TestCase, root: string): Promise<Sandbox> =
     env.GIT_TERMINAL_PROMPT = "0"
     env.MCP_TIMEOUT        = process.env.MCP_TIMEOUT ?? "120000"
 
+    /*  a private temporary directory, so concurrent sessions never collide on fixed
+        temporary file names (e.g. a patch file of a skill) nor leave them on the host  */
+    const tmp = path.join(root, "tmp")
+    await fs.promises.mkdir(tmp, { recursive: true })
+    env.TMPDIR = tmp
+    env.TMP    = tmp
+    env.TEMP   = tmp
+
     /*  optionally load all MCP tool schemas upfront instead of deferring them behind
         "ToolSearch", whose "tool_reference" results a gateway may not expand for
         non-Anthropic models (see https://code.claude.com/docs/en/mcp.md)  */
@@ -112,12 +161,14 @@ const sandboxPopulate = async (caze: TestCase, root: string): Promise<Sandbox> =
         seal the answer keys (e.g. the expected probe values of "ase_compat" in the
         tool sources, and the oracles of the harness) against the file reading tools
         (the "//" prefix denotes an absolute path, and the "Read" rules also cover
-        "Grep" and "Glob"; "Bash" stays a known gap, as the skills need it)  */
+        "Grep" and "Glob"; "Bash" stays a known gap, as the skills need it), and the
+        ASE working copy under test against the file editing tools (the "Edit" rules
+        also cover "Write", with the session hook of the confinement as the main guard)  */
     const sealed = [ path.join(repoRoot, "tool", "src"), harnessRoot ]
     await fs.promises.writeFile(path.join(home, ".claude", "settings.json"),
         JSON.stringify({
             disableClaudeAiConnectors: true,
-            permissions: { deny: sealed.map((dir) => `Read(/${dir}/**)`) }
+            permissions: { deny: [ ...sealed.map((dir) => `Read(/${dir}/**)`), `Edit(/${repoRoot}/**)` ] }
         }), "utf8")
 
     /*  materialize the fixture  */
@@ -257,6 +308,9 @@ export const sandboxTeardown = async (sandbox: Sandbox, keep: boolean): Promise<
         cwd: sandbox.project, env: sandbox.env, extendEnv: false,
         stdin: "ignore", timeout: 30 * 1000, reject: false
     })
+    await credentialsWriteBack(sandbox.home)
     if (!keep)
         await fs.promises.rm(sandbox.root, { recursive: true, force: true })
+    else
+        await fs.promises.writeFile(path.join(sandbox.root, ".keep"), "kept for inspection\n", "utf8")
 }

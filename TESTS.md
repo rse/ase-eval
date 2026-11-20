@@ -24,6 +24,7 @@ via `npm start test -- <options>` and the `run_*.sh` scripts.
 | `-t, --time-factor <n>`  | factor on all case and stage timeouts (default: `$ASE_TEST_TIME_FACTOR`, else `1`) |
 | `--allow-stale`          | run even if `tool/dst` is older than `tool/src`                      |
 | `-r, --results <dir>`    | results directory (default: `results/<timestamp>`)                   |
+| `--resume <dir>`         | resume a results directory of the same model: keep its decided runs, re-run only its skipped runs and those lost to a lost login (`infraKind: auth`) into new `run-<n>-retry*/` directories; case globs narrow down the re-run |
 | `-C, --cases-dir <dir>`  | cases directory (default: `cases`; e.g. `uplift` for the uplift benchmark) |
 | `--llm <file>`           | gateway profile (default: `$ASE_TEST_LLM`)                           |
 | `--tool-search <mode>`   | `off` loads all MCP tool schemas upfront (`ENABLE_TOOL_SEARCH=false` in the sessions) instead of deferring them behind `ToolSearch` (default: `$ASE_TEST_TOOL_SEARCH`, else `on`) |
@@ -60,7 +61,8 @@ see `docs/review/README.md`), `clean`, and `distclean`.
 |------|-------------------------------------------------------------------------------------------|
 | `0`  | all cases passed                                                                          |
 | `1`  | a case failed its pass@k threshold, or no case matched the globs                          |
-| `2`  | cost ceiling hit (wins over `1`), an incomplete case, an infrastructure error or skipped run, or a preflight error (missing profile, unbuilt or stale tool, no credentials, no `python3` for a `suite` oracle, invalid `--jobs`/`--max-cost-usd`/`--budget-factor`/`--time-factor`) |
+| `2`  | cost ceiling hit (wins over `1`), an incomplete case, an infrastructure error or skipped run, or a preflight error (missing profile, unbuilt or stale tool, unbuilt plugin (missing `data.md`/`ase-format-specbook.*`), modified `plugin/` or `tool/plugin/`, no credentials, no `python3` for a `suite` oracle, invalid `--jobs`/`--max-cost-usd`/`--budget-factor`/`--time-factor`) |
+| `4`  | the agent tool login was lost (`aborted: auth lost`): all runners stopped scheduling, the remaining runs are skipped -- re-login, then `--resume <dir>` |
 | `130` | interrupted (SIGINT/SIGTERM): live sessions aborted, sandboxes torn down, partial `summary.json` written |
 
 ## Third-Party Gateways
@@ -343,8 +345,21 @@ sessions use the automatic permission mode of the agent tool.
     retried only after at least 30 s plus a jitter.
 -   Every infrastructure error carries its kind (`infraKind` in the
     summary, `⚠ infra (<kind>)` in the console, `+N infra (kinds)` in
-    the comparison): `gateway`, `api`, `mcp`, `sim`, `stall`, `eval`, or
-    `crash`.
+    the comparison): `gateway`, `api`, `mcp`, `sim`, `stall`, `eval`,
+    `crash`, `auth`, or `contaminated`.
+-   A lost agent tool login (`no longer accepts this session`, `Not logged
+    in · Please run /login`, `Cloud gateway session expired`, found in a
+    crash, a session error, the reply text, or an evaluation) is an
+    `auth` infrastructure error: it is never retried and sets a sticky flag
+    in the shared outage state, so all runners of a launcher stop
+    scheduling and exit with `4`.
+-   The sessions are confined to their sandbox: a `PreToolUse` hook (which
+    also covers sub-agents) and an `Edit` deny rule refuse writes into the
+    ASE working copy (the diagnostic oracle `confinement` counts them). A
+    run after which `plugin/` or `tool/plugin/` is modified anyway is a
+    `contaminated` error and stops the batch. Every sandbox has its own
+    `TMPDIR`, and the OAuth credentials are linked (not copied) into it,
+    with a refreshed copy written back on teardown.
 -   The workers start staggered: the pool waits `$ASE_TEST_START_DELAY`
     seconds (the launcher sets `20 × runner index`), and worker `i`
     another `i × $ASE_TEST_STAGGER_SEC` seconds (default `10`), so a batch does not open all its sessions at

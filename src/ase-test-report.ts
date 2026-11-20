@@ -14,13 +14,19 @@ import type { OracleResult } from "./ase-test-oracle.js"
 
 /*  the kind of an infrastructure error ("" for none): a gateway outage or server
     error, an API refusal or a sub-agent API error, an unconnected MCP server, a
-    failed simulator, a stalled session, a failed evaluation, or a plain crash  */
-export type InfraKind = "gateway" | "api" | "mcp" | "sim" | "stall" | "eval" | "crash" | ""
+    failed simulator, a stalled session, a failed evaluation, a plain crash, a lost
+    agent tool login, or a modified ASE working copy  */
+export type InfraKind = "gateway" | "api" | "mcp" | "sim" | "stall" | "eval" | "crash" | "auth" | "contaminated" | ""
 
 /*  the failure texts of a gateway outage resp. a transient server error (incl.
     a simulator or judge completion which still failed after its retries)  */
 export const GATEWAY_FAILURE =
     /Couldn't load settings from Cloud gateway|API Error: (?:5\d\d|529)\b|Service Temporarily Unavailable|overloaded_error|\bgateway: /
+
+/*  the failure texts of a lost agent tool login (a revoked or expired gateway
+    session), which no retry can heal before a re-login  */
+export const AUTH_FAILURE =
+    /no longer accepts this session|Not logged in · Please run \/login|Cloud gateway session expired|run \/login to reconnect/
 
 /*  the outcome of one run of a case  */
 export type RunOutcome = {
@@ -171,10 +177,13 @@ export const reportSummary = (resultsDir: string, cases: CaseOutcome[],
         `total cost: $${totalUsd.toFixed(2)} (incl. $${sideUsd.toFixed(2)} simulator/judge)` +
         (unpriced > 0 ? chalk.yellow(` (${unpriced} run(s) unpriced: costs are fallback estimates)`) : "") +
         `${aborted !== "" ? chalk.red(` (aborted: ${aborted})`) : ""}`)
+    if (aborted === "auth lost")
+        console.log(chalk.red(`agent tool login lost -- re-login, then resume with: --resume ${resultsDir}`))
     summaryWrite(resultsDir, cases, totalUsd, sideUsd, aborted, meta)
     console.log(chalk.dim(`summary: ${path.join(resultsDir, "summary.json")}`))
 
-    /*  the exit code precedence: a hit cost ceiling or an interrupt (2) beats a failed
-        case (1), which beats an incomplete case, an infrastructure error, or a skipped run (2)  */
-    return aborted !== "" ? 2 : (failed > 0 ? 1 : (errored || incomplete > 0 ? 2 : 0))
+    /*  the exit code precedence: a lost login (4) beats a hit cost ceiling or an interrupt
+        (2), which beats a failed case (1), which beats an incomplete case, an
+        infrastructure error, or a skipped run (2)  */
+    return aborted === "auth lost" ? 4 : aborted !== "" ? 2 : (failed > 0 ? 1 : (errored || incomplete > 0 ? 2 : 0))
 }

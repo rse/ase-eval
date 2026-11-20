@@ -59,6 +59,9 @@ if [[ "$answer" != "y" && "$answer" != "Y" ]]; then
     exit 0
 fi
 
+#   remove the leftover sandboxes of killed earlier runs (they may hold credentials)
+etc/clean-sandboxes.sh --auto
+
 #   run all cases (probe-gated), passing through any additional harness options
 source etc/run-gated.sh
 runGated "" "$@"

@@ -35,16 +35,17 @@ export const pause = async (ms: number): Promise<void> => {
     until "until" (60 s doubling per consecutive outage up to 300 s, plus a jitter,
     so not all workers hit the recovering gateway at once), and an ordinary run
     resets the streak  */
-type Outage = { until: number, streak: number }
+type Outage = { until: number, streak: number, auth: boolean }
+let authLocal = false
 const outageRead = (): Outage => {
     if (outageConfig.file === "")
-        return { until: 0, streak: 0 }
+        return { until: 0, streak: 0, auth: authLocal }
     try {
         const data = JSON.parse(fs.readFileSync(outageConfig.file, "utf8")) as Partial<Outage>
-        return { until: Number(data.until ?? 0), streak: Number(data.streak ?? 0) }
+        return { until: Number(data.until ?? 0), streak: Number(data.streak ?? 0), auth: data.auth === true || authLocal }
     }
     catch (_err) {
-        return { until: 0, streak: 0 }
+        return { until: 0, streak: 0, auth: authLocal }
     }
 }
 const outageWrite = (outage: Outage): void => {
@@ -62,19 +63,31 @@ export const outageMark = (): void => {
         return
     const streak = prev.streak + 1
     const ms     = Math.min(60 * 2 ** (streak - 1), 300) * 1000 + Math.random() * 10 * 1000
-    outageWrite({ until: now + ms, streak })
+    outageWrite({ until: now + ms, streak, auth: prev.auth })
     console.log(chalk.yellow(`⏸ gateway outage (#${streak}) -- pausing all workers ${Math.round(ms / 1000)}s`))
 }
 export const outageReset = (): void => {
     const prev = outageRead()
     if (prev.streak > 0 && prev.until <= Date.now())
-        outageWrite({ until: 0, streak: 0 })
+        outageWrite({ until: 0, streak: 0, auth: prev.auth })
 }
 export const outageWait = async (): Promise<void> => {
     const ms = outageRead().until - Date.now()
     if (ms > 0)
         await pause(ms)
 }
+
+/*  the lost login of the agent tool: a sticky flag of the shared outage state, so
+    the first runner hitting it stops the scheduling of all runners (no retry can
+    heal it before a re-login)  */
+export const authMark = (): void => {
+    authLocal = true
+    const prev = outageRead()
+    if (!prev.auth)
+        outageWrite({ ...prev, auth: true })
+}
+export const authLost = (): boolean =>
+    outageRead().auth
 
 /*  the shared slowdown board (next to the outage file): a session streaming
     below the slow threshold notes itself once a minute, and a slowdown counts

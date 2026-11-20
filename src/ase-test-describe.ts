@@ -111,7 +111,8 @@ const describeOracle = (caze: TestCase, oracle: OracleSpec): string[] => {
             "(copied into the project only after the last stage, run via \"python3 -m unittest\")")
     else if ("rubric" in oracle) {
         lines.push(`    - LLM judge scores the output against rubric "${path.relative(caze.dir, oracle.rubric.file)}" ` +
-            `(threshold: ${oracle.rubric.threshold.toFixed(2)}, votes: ${oracle.rubric.votes}):`)
+            `(threshold: ${oracle.rubric.threshold.toFixed(2)}, votes: ${oracle.rubric.votes}` +
+            `${oracle.rubric.evidence !== "none" ? `, evidence: ${oracle.rubric.evidence}` : ""}):`)
         fileBlock(oracle.rubric.file)
     }
     else if ("similar" in oracle) {

@@ -134,7 +134,8 @@ const oracleSchema = z.union([
         rubric: z.strictObject({
             file:         z.string(),
             threshold:    z.number().min(0).max(1).default(0.7),
-            votes:        z.number().int().min(1).default(3)
+            votes:        z.number().int().min(1).default(3),
+            evidence:     z.enum([ "none", "diffstat" ]).default("none")
         })
     }),
 

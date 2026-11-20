@@ -29,5 +29,8 @@ set -euo pipefail
 #   operate from the directory of this script (the harness directory)
 cd "$(dirname "$0")"
 
+#   remove the leftover sandboxes of killed earlier runs (they may hold credentials)
+etc/clean-sandboxes.sh --auto
+
 #   run the launcher, passing through any harness options to every runner
 exec node --import tsx src/ase-test-launch.ts "$@"

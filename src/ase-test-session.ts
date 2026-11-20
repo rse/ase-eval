@@ -103,6 +103,41 @@ export type SessionResult = {
     toolCalls:    number
     toolCallsMax: number
     subSilentSec: number
+    confinedDenials: number
+}
+
+/*  the confinement of a session to its sandbox: the reason to deny a tool call
+    which would modify the ASE working copy under test (the plugin is loaded from
+    it, so a session writing into it changes the skills of all later runs), resp.
+    null for an allowed call -- file tools by their target path, and "Bash" by a
+    mention of the working copy together with a writing command  */
+const BASH_WRITE    = /\bsed\s+-i|\b(?:rm|mv|cp|chmod|ln|touch|truncate)\b|\bnpm\s+(?:start|run|i|install|ci)\b|\bgit\s+(?:checkout|reset|restore|apply|commit|add|stash|clean|switch|am|merge|rebase|cherry-pick)\b/
+const BASH_REDIRECT = /(?:\d?>>?|\btee(?:\s+-a)?)\s*["']?([^\s"';|&)]+)/g
+export const confineDecision = (toolName: string, toolInput: unknown,
+    sandboxRoot: string, sandboxProject: string, root = repoRoot): string | null => {
+    const input  = (toolInput ?? {}) as Record<string, unknown>
+    const inside = (file: string, dir: string) => file === dir || file.startsWith(`${dir}${path.sep}`)
+    if (/^(?:Write|Edit|MultiEdit|NotebookEdit)$/.test(toolName)) {
+        const raw = String(input.file_path ?? input.notebook_path ?? "")
+        if (raw === "")
+            return null
+        const file = path.resolve(sandboxProject, raw)
+        if (inside(file, root) && !inside(file, sandboxRoot))
+            return `writing "${raw}" is denied: it is part of the ASE working copy under test, ` +
+                "outside of the sandbox project -- work inside the project directory only"
+    }
+    else if (toolName === "Bash") {
+        const command = String(input.command ?? "")
+        const home    = process.env.HOME ?? ""
+        const short   = home !== "" && inside(root, home) ? `~${root.slice(home.length)}` : null
+        const named   = (text: string) => text.includes(root) || (short !== null && text.includes(short))
+        const targets = [ ...command.matchAll(BASH_REDIRECT) ].map((m) => m[1])
+            .filter((target) => target !== "/dev/null" && !target.startsWith("&"))
+        if ((named(command) && BASH_WRITE.test(command)) || targets.some(named))
+            return "this command is denied: it would modify the ASE working copy under test, " +
+                "outside of the sandbox project -- work inside the project directory only"
+    }
+    return null
 }
 
 /*  render the invocation of the skill <skill> with the arguments <args>, adding the
@@ -125,7 +160,8 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
         stopReason: "", apiStatus: null, mcpFailed: false, simFailed: false, budgetHit: false, apiFlaky: "",
         apiRetries: 0, apiRetryText: "", lastApiRetryAt: 0, stallAt: "", abortAt: "", sdkHung: false,
         looped: false, unparsedInputs: 0, slowStream: false, slowCps: 0, costLowerBound: false, costBasis: "sdk",
-        agentTurns: 0, agentTurnsMax: 0, toolCalls: 0, toolCallsMax: 0, subSilentSec: 0
+        agentTurns: 0, agentTurnsMax: 0, toolCalls: 0, toolCallsMax: 0, subSilentSec: 0,
+        confinedDenials: 0
     }
     const prompt = stage.skill !== "" ? skillPrompt(stage.skill, stage.args) : stage.prompt
 
@@ -366,6 +402,26 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
             answers injected into its input (pre-supplied answers skip the interactive
             dialog), while every other permission request is blanket-allowed  */
         disallowedTools: [ ...stage.disallowedTools, ...(simulator === null ? [ "AskUserQuestion" ] : []) ],
+
+        /*  the confinement to the sandbox (a hook, as it also fires for sub-agents
+            and for the calls the permission mode allows without asking)  */
+        hooks: {
+            PreToolUse: [ {
+                hooks: [ async (input) => {
+                    const call   = input as { tool_name?: string, tool_input?: unknown }
+                    const reason = confineDecision(String(call.tool_name ?? ""), call.tool_input,
+                        sandbox.root, sandbox.project)
+                    if (reason === null)
+                        return {}
+                    result.confinedDenials += 1
+                    return {
+                        hookSpecificOutput: {
+                            hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason
+                        }
+                    }
+                } ]
+            } ]
+        },
         ...(simulator === null && stage.permissionMode !== "plan" ? {} : {
             canUseTool: async (toolName, toolInput) => {
                 if (toolName === "ExitPlanMode")

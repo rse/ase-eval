@@ -17,25 +17,40 @@ fallback:
     outUsdPerM:         20.00
     cacheReadUsdPerM:   0.20
 
-#   the real prices of the unpriced gateway models (cache prices default
-#   to 10% resp. 125% of the input price when omitted)
+#   the real prices of the gateway models, from the gateway price list
+#   (cache prices default to 10% resp. 125% of the input price when omitted,
+#   i.e. for the models whose cache prices the gateway does not set)
 models:
+    "global.openai.gpt-6-astra":
+        inUsdPerM:          10.00
+        outUsdPerM:         50.00
+        cacheReadUsdPerM:   1.00
+        cacheWriteUsdPerM:  12.50
+    "global.openai.gpt-6-sol":
+        inUsdPerM:          2.00
+        outUsdPerM:         10.00
+        cacheReadUsdPerM:   0.20
+        cacheWriteUsdPerM:  2.50
+    "global.moonshotai.kimi-k3.1":
+        inUsdPerM:          4.00
+        outUsdPerM:         20.00
+        cacheReadUsdPerM:   0.20
+        cacheWriteUsdPerM:  5.00
     "openai.gpt-oss-120b-1:0":
-        inUsdPerM:      0.15
-        outUsdPerM:     0.60
+        inUsdPerM:          0.15
+        outUsdPerM:         0.60
     "qwen.qwen3-235b-a22b-2507-v1:0":
-        inUsdPerM:      0.22
-        outUsdPerM:     0.88
+        inUsdPerM:          0.22
+        outUsdPerM:         0.88
     #   the reference models (judge, simulator, and the Opus runner): the agent
     #   tool prices them itself, so these entries only price the live usage of
-    #   an aborted session as its lower bound (Anthropic first-party list prices)
+    #   an aborted session as its lower bound (the gateway prices; the 1-hour
+    #   cache write price of $8.80 has no key, the 5-minute one is used)
     "eu.anthropic.claude-opus-5-5":
-        inUsdPerM:      4.00
-        outUsdPerM:     20.00
-        cacheReadUsdPerM: 0.20
+        inUsdPerM:          4.40
+        outUsdPerM:         22.00
+        cacheReadUsdPerM:   0.22
+        cacheWriteUsdPerM:  5.50
     "eu.anthropic.claude-sonnet-5":
-        inUsdPerM:      2.00
-        outUsdPerM:     10.00
-    #   TODO: fill in from the gateway price list
-    #   "global.moonshotai.kimi-k3.1":  { inUsdPerM: ..., outUsdPerM: ... }
-    #   "global.openai.gpt-6-astra":    { inUsdPerM: ..., outUsdPerM: ... }
+        inUsdPerM:          2.00
+        outUsdPerM:         10.00

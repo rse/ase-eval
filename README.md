@@ -56,8 +56,10 @@ echo '{"type":"control_request","request_id":"1","request":{"subtype":"initializ
 
 ## Running the Tests
 
-Prerequisites: a fully built `tool/` (`cd ../tool && npm start build`)
-and Anthropic credentials (`ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`,
+Prerequisites: a fully built and unmodified `plugin/` and `tool/`
+(`cd ../plugin && npm start build`, then `cd ../tool && npm start build`;
+the harness refuses to run on missing generated plugin files or on local
+modifications of `plugin/` and `tool/plugin/`) and Anthropic credentials (`ANTHROPIC_API_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`,
 or a regular `claude` login). Every run burns real AI tokens.
 
 Note: when running all tests (i.e. not selecting any test), we first run all
@@ -79,6 +81,7 @@ npm start test -- -d --cases='meta/*'             # describe input and oracles o
 ./run_uplift_test.sh                              # ASE uplift benchmark incl. comparison (~$15-25)
 ./launch_tests.sh                                 # interactive: pick tests and models, run in parallel
 ./generate_comparison.sh                          # compare past runs (free, writes results/COMPARISON.{md,html})
+npm start test -- --resume results/<dir>          # after a lost login (exit code 4): re-login, then re-run only the lost runs
 ```
 
 ### With a Local LLM (Anthropic-compatible gateway, e.g. LiteLLM)

@@ -8,7 +8,9 @@ as the skill does not stage), then proposed a commit message for the
 *staged* changes. Score each criterion and average them:
 
 1.  **ChangeLog step**: the ChangeLog skill determined the changes from the
-    staged diff and reports that it updated `CHANGELOG.md`.
+    staged diff and updated `CHANGELOG.md` (evidenced by "Files Changed by
+    the Session"; the reply need not narrate the entries, a status line of
+    the finished step suffices).
 2.  **Message**: a concise commit message in the project's style (a
     single `FEATURE:`-like line is fine) that names the discount feature
     precisely (e.g. a percentage discount applied before tax, CLI option).

@@ -325,7 +325,7 @@ export function checkContamination (events, spec = conditionSpec()) {
                 continue
             for (const s of toolStrings(block.input)) {
                 const n = norm(s)
-                if (/sollliste|cases\/review|src\/review|solution\//.test(n) || bench.some((b) => n.includes(b)))
+                if (/sollliste|(?:^|[\s"'=(/:])(?:cases\/review|src\/review)(?:[/\s"';)]|$)|solution\//.test(n) || bench.some((b) => n.includes(b)))
                     problems.push(`${block.name}: access to ${s}`)
                 else if (n.includes(repo) && !allowed.some((a) => n.includes(a)) && !inNodeModules(n, repo))
                     problems.push(`${block.name}: access to the ASE repository ${s}`)

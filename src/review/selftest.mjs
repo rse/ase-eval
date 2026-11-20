@@ -319,6 +319,13 @@ check("isolation: unconnected ASE MCP server is detected", checkInit({ plugins: 
     check("contamination: access to the expected-results list is detected", checkContamination([ use({ file_path: "../../solution/expected.json" }) ]).length > 0)
     check("contamination: a relative path inside the copy is fine", checkContamination([ use({ file_path: "src/cart.ts" }) ]).length === 0)
     const bash = (command) => ({ type: "assistant", message: { content: [ { type: "tool_use", name: "Bash", input: { command } } ] } })
+    check("contamination: a file name merely starting with a benchmark directory name is fine",
+        checkContamination([ use({ file_path: "src/review-probe.ts" }) ]).length === 0
+        && checkContamination([ bash("node src/review-probe.ts; cat cases/reviewer.md") ]).length === 0)
+    check("contamination: the benchmark directories as whole path components are detected",
+        checkContamination([ bash("cat ../../src/review/lib/runner.mjs") ]).length > 0
+        && checkContamination([ bash("ls cases/review") ]).length > 0
+        && checkContamination([ use({ file_path: "src/review" }) ]).length > 0)
     check("contamination: a look into a node_modules/ directory of the repository is fine",
         checkContamination([ bash(`ls ${path.join(REPO_DIR, "node_modules", "typescript", "lib")}`) ]).length === 0
         && checkContamination([ bash(`ls ${path.join(REPO_DIR, "node_modules", "typescript")}`) ], conditionSpec("baseline")).length === 0)

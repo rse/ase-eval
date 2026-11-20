@@ -47,7 +47,8 @@ export type SessionRecord = {
     "turns" counts the result messages, i.e. the completed agentic turns, not
     the user turns of the "turns.maxTurns" case setting; "stopReason" and
     "apiStatus" are the subtype and HTTP status of an error result message,
-    "mcpFailed" flags a session whose ASE MCP server never connected,
+    "mcpFailed" flags a session whose ASE MCP server never connected or whose
+    ASE service failed to start,
     "stalled" one aborted by the watchdog after a too long silence, "simFailed"
     one whose simulator failed, "budgetHit" one aborted by the table-priced
     budget watchdog, "apiFlaky" the first gateway or server error seen inside
@@ -61,7 +62,8 @@ export type SessionRecord = {
     per second, "costLowerBound" an aborted session whose sub-agent costs are
     missing, "costBasis" tells how "costUsd" was priced, "agentTurns"/"toolCalls"
     the used agentic turns resp. tool calls against their caps "agentTurnsMax"/
-    "toolCallsMax", and "subSilentSec" the silence of a still open sub-agent at
+    "toolCallsMax" (without a result message, "agentTurns" is the lower bound of
+    the main-thread assistant messages with tool calls), and "subSilentSec" the silence of a still open sub-agent at
     the end of the session)  */
 export type SessionResult = {
     messages:     Record<string, any>[]
@@ -212,6 +214,7 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
     const subStallSec = Number(process.env.ASE_TEST_STALL_SUB_SEC ?? "300") *
         Number(process.env.ASE_TEST_TIME_FACTOR ?? "1")
     const openAgents  = new Set<string>()
+    const toolTurns   = new Set<string>()
     const taskTokens  = new Map<string, number>()
 
     /*  the thinking progress since the last re-arm of the stall watchdog: a stream
@@ -562,12 +565,16 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
                             block.type === "tool_use" ? JSON.stringify(block.input ?? {}).length : 0
             }
             else {
-                /*  the open sub-agent calls of the main thread  */
-                for (const block of parts)
+                /*  the open sub-agent calls and the tool-calling turns of the main thread
+                    (one message per content block, so the turns are the distinct message ids)  */
+                for (const block of parts) {
+                    if (msg.type === "assistant" && block.type === "tool_use")
+                        toolTurns.add(String((msg as Record<string, any>).message?.id ?? block.id))
                     if (msg.type === "assistant" && block.type === "tool_use" && /^(?:Agent|Task)$/.test(String(block.name)))
                         openAgents.add(String(block.id))
                     else if (msg.type === "user" && block.type === "tool_result")
                         openAgents.delete(String(block.tool_use_id))
+                }
             }
             loopWatch(msg as Record<string, any>)
             if (msg.type === "system" && msg.subtype === "init") {
@@ -582,13 +589,15 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
                 result.apiRetryText   = `API Error: ${retry.error_status ?? retry.error ?? "unknown"} (agent tool retry)`
             }
             else if (msg.type === "user") {
-                /*  an unconnected ASE MCP server is reported to the model only through
-                    the tool results (e.g. of "ToolSearch"), never as a session error  */
+                /*  an unconnected ASE MCP server resp. a failed ASE service start is reported
+                    to the model only through the tool results, never as a session error  */
                 const blocks = Array.isArray(msg.message?.content) ? msg.message.content : []
-                for (const block of blocks as { type?: string, content?: unknown }[])
+                for (const block of blocks as { type?: string, content?: unknown, is_error?: boolean }[])
                     if (block.type === "tool_result") {
                         const text = typeof block.content === "string" ? block.content : JSON.stringify(block.content ?? "")
                         if (/failed to connect/.test(text) && /plugin:ase:ase/.test(text))
+                            result.mcpFailed = true
+                        else if (block.is_error === true && /ase service unavailable:/.test(text))
                             result.mcpFailed = true
                         const flaky = GATEWAY_FAILURE.exec(text)
                         if (flaky !== null && result.apiFlaky === "")
@@ -701,7 +710,8 @@ export const runSession = async (stage: Stage, sandbox: Sandbox,
     /*  a timeout or stall amid a slow stream, confirmed by other sessions as a
         gateway slowdown, says nothing about the model, and neither does one while
         a sub-agent stayed silent (see "gatewayEnd" of "ase-test.ts")  */
-    result.toolCalls = toolCalls
+    result.toolCalls  = toolCalls
+    result.agentTurns = Math.max(result.agentTurns, toolTurns.size)
     if (result.timedOut || result.stalled) {
         const level = slowLevel(Date.now())
         result.slowCps      = level ?? 0

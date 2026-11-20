@@ -4,13 +4,15 @@ stages:
   - skill: ase-sync-import
     args: "--target SPEC notes/requirements-meeting.txt"
     timeoutSec: 1500
+    maxAgentTurns: 64
     budget: { maxUsd: 6.00 }
     oracles:
       - gitDiff: { mustMatch: [ "[Bb]ooking", "[Nn]o-[Ss]how" ] }
   - skill: ase-spec-lint
     args: "--auto"
     timeoutSec: 1200
-    maxToolCalls: 300
+    maxAgentTurns: 64
+    maxToolCalls: 400
     budget: { maxUsd: 5.00 }
   - skill: ase-sync-export
     args: "--output docs/spec.html"

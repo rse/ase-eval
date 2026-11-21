@@ -109,26 +109,37 @@ export const sandboxCreate = async (caze: TestCase, run: number): Promise<Sandbo
     }
 }
 
-/*  populate a fresh sandbox root with the environment and the fixture  */
-const sandboxPopulate = async (caze: TestCase, root: string): Promise<Sandbox> => {
-    const home    = path.join(root, "home")
-    const project = path.join(root, "project")
-    await fs.promises.mkdir(path.join(home, ".claude"),  { recursive: true })
-    await fs.promises.mkdir(path.join(project, ".ase"),  { recursive: true })
+/*  create the private directories of a sandbox root, all owner-only ("0700",
+    explicitly, as "mkdir" honours the umask): native addons like "@swc/html" of
+    SpecBook refuse a cache directory with an ancestor writable by other users  */
+const sandboxDirs = async (root: string) => {
+    const dirs = {
+        home:    path.join(root, "home"),
+        project: path.join(root, "project"),
+        tmp:     path.join(root, "tmp"),
+        swc:     path.join(root, "swc-cache")
+    }
+    for (const dir of [ dirs.home, path.join(dirs.home, ".claude"), path.join(dirs.home, ".cache"),
+        dirs.project, dirs.tmp, dirs.swc ]) {
+        await fs.promises.mkdir(dir, { recursive: true, mode: 0o700 })
+        await fs.promises.chmod(dir, 0o700)
+    }
+    return dirs
+}
 
-    /*  the sandboxed environment, assembled in three passes with the final policy:
-        (1) everything of the developer's shell EXCEPT agent tool, ASE, tmux, and
-        Copilot state and common credential variables (the session runs autonomous
-        skill code), plus a controlled HOME and XDG directories and the built "ase"
-        CLI on the PATH (required by the MCP server of the plugin); (2) PLUS exactly
-        one agent tool credential; (3) PLUS the optional gateway endpoint and tuning  */
+/*  the sandboxed base environment (pass 1 of the policy in "sandboxPopulate"):
+    everything of the developer's shell EXCEPT agent tool, ASE, tmux, and Copilot
+    state and common credential variables (the session runs autonomous skill code),
+    plus a controlled HOME, XDG, and temporary directories and the built "ase" CLI
+    on the PATH (required by the MCP server of the plugin)  */
+const sandboxBaseEnv = (dirs: { home: string, tmp: string, swc: string }): Record<string, string> => {
     const env: Record<string, string> = {}
     for (const [ key, value ] of Object.entries(process.env))
-        if (value !== undefined && !/^(TMUX|COPILOT_|ASE_|CLAUDE|ANTHROPIC_|GITHUB_|GH_|AWS_|NPM_TOKEN$|NODE_AUTH_TOKEN$|OPENAI_|GOOGLE_|GEMINI_)/.test(key))
+        if (value !== undefined && !/^(TMUX|COPILOT_|ASE_|CLAUDE|ANTHROPIC_|GITHUB_|GH_|AWS_|NPM_TOKEN$|NODE_AUTH_TOKEN$|OPENAI_|GOOGLE_|GEMINI_|SWC_)/.test(key))
             env[key] = value
-    env.HOME               = home
-    env.XDG_CONFIG_HOME    = path.join(home, ".config")
-    env.XDG_STATE_HOME     = path.join(home, ".local", "state")
+    env.HOME               = dirs.home
+    env.XDG_CONFIG_HOME    = path.join(dirs.home, ".config")
+    env.XDG_STATE_HOME     = path.join(dirs.home, ".local", "state")
     env.PATH               = `${path.join(repoRoot, "tool", "bin")}${path.delimiter}${process.env.PATH ?? ""}`
     env.NO_UPDATE_NOTIFIER = "1"
     env.ASE_HEADLESS       = "true"
@@ -136,12 +147,47 @@ const sandboxPopulate = async (caze: TestCase, root: string): Promise<Sandbox> =
     env.MCP_TIMEOUT        = process.env.MCP_TIMEOUT ?? "120000"
 
     /*  a private temporary directory, so concurrent sessions never collide on fixed
-        temporary file names (e.g. a patch file of a skill) nor leave them on the host  */
-    const tmp = path.join(root, "tmp")
-    await fs.promises.mkdir(tmp, { recursive: true })
-    env.TMPDIR = tmp
-    env.TMP    = tmp
-    env.TEMP   = tmp
+        temporary file names (e.g. a patch file of a skill) nor leave them on the host,
+        and a private native addon cache (independent of the HOME and TMPDIR fallbacks)  */
+    env.TMPDIR = dirs.tmp
+    env.TMP    = dirs.tmp
+    env.TEMP   = dirs.tmp
+    env.SWC_NATIVE_BINDING_CACHE = dirs.swc
+    return env
+}
+
+/*  preflight: SpecBook (and with it "ase spec" and the "ase_specbook_*" MCP tools)
+    must load in a sandbox-like environment, so return the failure output (or "")  */
+export const sandboxSpecProbe = async (): Promise<string> => {
+    const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "ase-preflight-"))
+    try {
+        const dirs = await sandboxDirs(root)
+        const res  = await execa(path.join(repoRoot, "tool", "bin", "ase"), [ "spec", "init", "--fetch", "never" ], {
+            cwd: dirs.project, env: sandboxBaseEnv(dirs), extendEnv: false,
+            stdin: "ignore", timeout: 60 * 1000, reject: false, all: true
+        })
+        return res.exitCode === 0 ? "" : (res.all ?? `exit ${res.exitCode}`).split("\n").slice(-5).join(" / ")
+    }
+    finally {
+        await fs.promises.rm(root, { recursive: true, force: true })
+    }
+}
+
+/*  a failed setup script of a case fixture: deterministic and identical for every
+    model, so it is never retried and stops the remaining runs of the case  */
+export class FixtureError extends Error {}
+
+/*  populate a fresh sandbox root with the environment and the fixture  */
+const sandboxPopulate = async (caze: TestCase, root: string): Promise<Sandbox> => {
+    const dirs    = await sandboxDirs(root)
+    const home    = dirs.home
+    const project = dirs.project
+    await fs.promises.mkdir(path.join(project, ".ase"),  { recursive: true })
+
+    /*  the sandboxed environment, assembled in three passes with the final policy:
+        (1) the base environment of "sandboxBaseEnv"; (2) PLUS exactly one agent
+        tool credential; (3) PLUS the optional gateway endpoint and tuning  */
+    const env = sandboxBaseEnv(dirs)
 
     /*  optionally load all MCP tool schemas upfront instead of deferring them behind
         "ToolSearch", whose "tool_reference" results a gateway may not expand for
@@ -163,8 +209,11 @@ const sandboxPopulate = async (caze: TestCase, root: string): Promise<Sandbox> =
         (the "//" prefix denotes an absolute path, and the "Read" rules also cover
         "Grep" and "Glob"; "Bash" stays a known gap, as the skills need it), and the
         ASE working copy under test against the file editing tools (the "Edit" rules
-        also cover "Write", with the session hook of the confinement as the main guard)  */
-    const sealed = [ path.join(repoRoot, "tool", "src"), harnessRoot ]
+        also cover "Write", with the session hook of the confinement as the main guard),
+        where the harness is sealed except its "node_modules" (the target of the linked packages)  */
+    const sealed = [ path.join(repoRoot, "tool", "src"),
+        ...(await fs.promises.readdir(harnessRoot)).filter((name) => name !== "node_modules")
+            .map((name) => path.join(harnessRoot, name)) ]
     await fs.promises.writeFile(path.join(home, ".claude", "settings.json"),
         JSON.stringify({
             disableClaudeAiConnectors: true,
@@ -245,7 +294,7 @@ const sandboxPopulate = async (caze: TestCase, root: string): Promise<Sandbox> =
             stdin: "ignore", timeout: 120 * 1000, reject: false, all: true
         })
         if (setup.exitCode !== 0)
-            throw new Error(`fixture setup "${path.basename(caze.fixture.setup)}" failed (exit ${setup.exitCode}): ` +
+            throw new FixtureError(`fixture setup "${path.basename(caze.fixture.setup)}" failed (exit ${setup.exitCode}): ` +
                 `${(setup.all ?? "").split("\n").slice(-5).join(" / ")}`)
         if (caze.fixture.git) {
             const tag = await git(sandbox, [ "rev-parse", "--verify", "--quiet", "ase-test-base^{commit}" ]).catch(() => null)

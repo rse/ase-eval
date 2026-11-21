@@ -16,7 +16,7 @@ import type { OracleResult } from "./ase-test-oracle.js"
     error, an API refusal or a sub-agent API error, an unconnected MCP server, a
     failed simulator, a stalled session, a failed evaluation, a plain crash, a lost
     agent tool login, or a modified ASE working copy  */
-export type InfraKind = "gateway" | "api" | "mcp" | "sim" | "stall" | "eval" | "crash" | "auth" | "contaminated" | ""
+export type InfraKind = "gateway" | "api" | "mcp" | "sim" | "stall" | "eval" | "crash" | "auth" | "contaminated" | "fixture" | ""
 
 /*  the failure texts of a gateway outage resp. a transient server error (incl.
     a simulator or judge completion which still failed after its retries)  */

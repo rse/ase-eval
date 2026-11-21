@@ -16,7 +16,7 @@ import { execa }   from "execa"
 
 import { caseDiscover }                    from "./ase-test-case.js"
 import type { TestCase }                   from "./ase-test-case.js"
-import { sandboxCreate, sandboxTeardown, harnessRoot, repoRoot, credentialsFile, credentialsExpiry } from "./ase-test-sandbox.js"
+import { sandboxCreate, sandboxTeardown, sandboxSpecProbe, FixtureError, harnessRoot, repoRoot, credentialsFile, credentialsExpiry } from "./ase-test-sandbox.js"
 import type { Sandbox }                    from "./ase-test-sandbox.js"
 import { runSession, liveAborts, sessionInterrupt } from "./ase-test-session.js"
 import type { SessionResult }              from "./ase-test-session.js"
@@ -159,6 +159,14 @@ if (pluginDirty.length > 0) {
     console.error(chalk.red("the ASE working copy under test is modified:\n" +
         pluginDirty.map((line) => `    ${line}`).join("\n") + "\n" +
         "-- restore it (e.g. git -C .. checkout -- <files>) and rebuild the plugin and the tool"))
+    process.exit(2)
+}
+
+/*  preflight: SpecBook must load in a sandbox (its native addon refuses caches with
+    an ancestor writable by other users, which fails "ase spec" and all SpecBook tools)  */
+const specProbe = await sandboxSpecProbe()
+if (specProbe !== "") {
+    console.error(chalk.red(`SpecBook does not load in a sandbox: ${specProbe}`))
     process.exit(2)
 }
 
@@ -348,6 +356,9 @@ const stageText = (text: string): string =>
         .join("\n")
         .replace(/\n{3,}/g, "\n\n")
         .trim()
+
+/*  the cases whose fixture setup failed (with the failure), whose remaining runs are skipped  */
+const fixtureFailed = new Map<string, string>()
 
 /*  execute one attempt of one run of a case, containing every failure (a throw
     escaping here would reject the whole worker pool and lose all results)  */
@@ -646,9 +657,11 @@ Promise<{ outcome: RunOutcome, retry: boolean }> => {
     catch (err) {
         outcome.outcome   = "error"
         outcome.failure   = err instanceof Error ? err.message : String(err)
-        outcome.infraKind = AUTH_FAILURE.test(outcome.failure) ? "auth" :
+        outcome.infraKind = err instanceof FixtureError ? "fixture" : AUTH_FAILURE.test(outcome.failure) ? "auth" :
             GATEWAY_FAILURE.test(outcome.failure) ? "gateway" : "crash"
-        retry = true
+        retry = !(err instanceof FixtureError)
+        if (err instanceof FixtureError)
+            fixtureFailed.set(caze.name, outcome.failure)
     }
     finally {
         /*  a lost agent tool login (in a crash, a session error, the reply text of a
@@ -724,6 +737,9 @@ const startupCrash = (outcome: RunOutcome): boolean =>
     outcome.outcome === "error" && outcome.durationMs < 30 * 1000
     && /Couldn't load settings from Cloud gateway/.test(outcome.failure)
 const executeRun = async (caze: TestCase, run: number): Promise<RunOutcome> => {
+    const fixture = fixtureFailed.get(caze.name)
+    if (fixture !== undefined)
+        return pendingOutcome(run, `fixture of the case failed in an earlier run: ${fixture}`)
     await outageWait()
     let attempt   = 1
     let counted   = 1

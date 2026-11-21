@@ -14,7 +14,7 @@ oracles:
       in: output
       match:
         - "db\\.js"
-        - "[Ii]njection|SQLi|into SQL|SQL (structure|string|query|statement)|[Pp]arameteri[sz]"
+        - "[Ii]njection|SQLi|into SQL|SQL (structure|string|query|statement)|[Pp]arameteri[sz]|[Bb]ound parameters|[Pp]repared statement|alter(s|ing)? the .{0,12}WHERE"
         - "files\\.js"
         - "[Tt]raversal|\\.\\./"
         - "config\\.js"
